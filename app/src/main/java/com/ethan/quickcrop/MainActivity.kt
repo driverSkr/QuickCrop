@@ -9,13 +9,13 @@ import android.os.Bundle
 import android.view.View
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.compose.ui.graphics.asAndroidBitmap
+import com.ethan.base.BaseActivity
 import com.ethan.quickcrop.core.media.GalleryMediaItem
 import com.ethan.quickcrop.core.media.MediaLibraryRepository
 import kotlinx.coroutines.Job
@@ -28,7 +28,7 @@ private enum class MediaFilter {
     Image
 }
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : BaseActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
@@ -86,16 +86,16 @@ class MainActivity : AppCompatActivity() {
         recyclerView.layoutManager = GridLayoutManager(this, 3)
         recyclerView.adapter = mediaAdapter
 
-        recentTabView.setOnClickListener {
+        recentTabView.setDebouncedClickListener {
             applyFilter(MediaFilter.Recent)
         }
-        videoTabView.setOnClickListener {
+        videoTabView.setDebouncedClickListener {
             applyFilter(MediaFilter.Video)
         }
-        imageTabView.setOnClickListener {
+        imageTabView.setDebouncedClickListener {
             applyFilter(MediaFilter.Image)
         }
-        refreshTabView.setOnClickListener {
+        refreshTabView.setDebouncedClickListener {
             requestPermissionAndLoad()
         }
 

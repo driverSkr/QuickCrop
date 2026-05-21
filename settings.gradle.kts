@@ -20,5 +20,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "QuickCrop"
+include(":base")
 include(":app")
  

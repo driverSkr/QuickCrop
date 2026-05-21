@@ -1,0 +1,6 @@
+/build
+/.cxx
+/.externalNativeBuild
+/local.properties
+*.iml
+.DS_Store
