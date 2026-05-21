@@ -1,6 +1,7 @@
 package com.ethan.quickcrop
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -14,6 +15,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.ethan.base.BaseActivity
 import com.ethan.quickcrop.ui.album.AlbumView
+import com.ethan.quickcrop.ui.crop.image.CropImageActivity
 import com.ethan.quickcrop.ui.theme.QuickCropTheme
 
 class MainActivity : BaseActivity() {
@@ -43,6 +45,9 @@ class MainActivity : BaseActivity() {
                     view.onPermissionRequest = {
                         requestPermissionAndLoad()
                     }
+                    view.onImageClick = { item ->
+                        openCropImagePage(item.uri.toString())
+                    }
                     view.bind(
                         scope = scope,
                         hasMediaPermission = hasMediaPermission()
@@ -51,11 +56,22 @@ class MainActivity : BaseActivity() {
             },
             update = { view ->
                 albumView = view
+                view.onImageClick = { item ->
+                    openCropImagePage(item.uri.toString())
+                }
             },
             onRelease = { view ->
                 if (albumView === view) {
                     albumView = null
                 }
+            }
+        )
+    }
+
+    private fun openCropImagePage(imageUri: String) {
+        startActivitySafely(
+            Intent(this, CropImageActivity::class.java).apply {
+                putExtra(CropImageActivity.EXTRA_IMAGE_URI, imageUri)
             }
         )
     }

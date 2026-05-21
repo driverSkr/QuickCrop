@@ -40,6 +40,7 @@ android {
 
 dependencies {
     implementation(project(":base"))
+    implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -55,6 +56,7 @@ dependencies {
     implementation(libs.androidx.media3.transformer)
     implementation(libs.androidx.media3.ui.compose)
     implementation(libs.androidx.media3.ui.compose.material3)
+    implementation(libs.material)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

@@ -34,6 +34,7 @@ class AlbumView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : FrameLayout(context, attrs, defStyleAttr) {
     var onPermissionRequest: (() -> Unit)? = null
+    var onImageClick: ((GalleryMediaItem) -> Unit)? = null
 
     private lateinit var lifecycleScope: LifecycleCoroutineScope
     private lateinit var recyclerView: RecyclerView
@@ -67,9 +68,7 @@ class AlbumView @JvmOverloads constructor(
         hasPermission = hasMediaPermission
         mediaAdapter = AlbumMediaAdapter(
             scope = lifecycleScope,
-            onClick = { item ->
-                Toast.makeText(context, item.displayName, Toast.LENGTH_SHORT).show()
-            }
+            onClick = { item -> handleMediaClick(item) }
         )
 
         recyclerView.layoutManager = GridLayoutManager(context, 3)
@@ -126,6 +125,14 @@ class AlbumView @JvmOverloads constructor(
         imageTabView = findViewById(R.id.tab_image)
         refreshTabView = findViewById(R.id.tab_refresh)
         emptyView = findViewById(R.id.empty_view)
+    }
+
+    private fun handleMediaClick(item: GalleryMediaItem) {
+        if (item.isVideo) {
+            Toast.makeText(context, item.displayName, Toast.LENGTH_SHORT).show()
+        } else {
+            onImageClick?.invoke(item)
+        }
     }
 
     private fun loadMedia() {

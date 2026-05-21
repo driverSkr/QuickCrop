@@ -18,6 +18,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.QuickCrop">
         <activity
+            android:name=".ui.crop.video.CropVideoActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.crop.image.CropImageActivity"
+            android:exported="false" />
+        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
