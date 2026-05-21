@@ -8,8 +8,6 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.max
@@ -35,7 +33,7 @@ object MediaLibraryRepository {
         context: Context,
         item: GalleryMediaItem,
         sizePx: Int
-    ): ImageBitmap? = withContext(Dispatchers.IO) {
+    ): Bitmap? = withContext(Dispatchers.IO) {
         val safeSize = max(sizePx, 1)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -43,10 +41,9 @@ object MediaLibraryRepository {
                     item.uri,
                     android.util.Size(safeSize, safeSize),
                     null
-                ).asImageBitmap()
+                )
             } else {
                 loadLegacyThumbnail(context.contentResolver, item.uri, item.isVideo, safeSize)
-                    ?.asImageBitmap()
             }
         } catch (throwable: Throwable) {
             Log.w(TAG, "加载缩略图失败：${item.uri}", throwable)
