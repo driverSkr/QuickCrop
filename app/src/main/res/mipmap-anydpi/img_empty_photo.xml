@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 占位空相册图，后续可直接替换为正式资源。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="80dp"
+    android:height="80dp"
+    android:viewportWidth="80"
+    android:viewportHeight="80">
+    <path
+        android:fillColor="#FF24262B"
+        android:pathData="M12,18 Q12,12 18,12 L62,12 Q68,12 68,18 L68,62 Q68,68 62,68 L18,68 Q12,68 12,62 Z" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#80FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="3"
+        android:pathData="M22,56 L35,42 L44,51 L50,44 L60,56" />
+    <path
+        android:fillColor="#80FFFFFF"
+        android:pathData="M50,24 A6,6 0,1 0,50,36 A6,6 0,1 0,50,24" />
+</vector>
