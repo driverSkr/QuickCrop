@@ -18,6 +18,8 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 
 /**
  * 自定义图片裁剪框组件。
@@ -32,14 +34,15 @@ import androidx.compose.ui.input.pointer.pointerInput
  */
 @Composable
 fun CropBox(modifier: Modifier = Modifier) {
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     // cropRect 保存当前裁剪框在 Canvas 坐标系中的位置和大小，这段 Rect 指的是 在当前绘制区域里的矩形坐标，也就是相对于 Canvas 左上角的坐标。
     var cropRect by remember {
         mutableStateOf(
-            Rect(//左上角：(100, 200) 右上角：(700, 200) 左下角：(100, 800) 右下角：(700, 800)
+            Rect(//左上角：(100, 200) 右上角：(1000, 200) 左下角：(100, 1100) 右下角：(1000, 1100)
                 left = 100f,    // 左边界距离 Canvas 左边 100 像素
                 top = 200f,     // 上边界距离 Canvas 顶部 200 像素
-                right = 700f,   // 右边界距离 Canvas 左边 700 像素
-                bottom = 800f   // 下边界距离 Canvas 顶部 800 像素
+                right = 1000f,   // 右边界距离 Canvas 左边 1000 像素
+                bottom = 1100f   // 下边界距离 Canvas 顶部 1100 像素
             )
         )
     }
@@ -48,6 +51,7 @@ fun CropBox(modifier: Modifier = Modifier) {
         modifier = modifier
             // 让 Canvas 填满父布局，这样遮罩、裁剪框和手势检测都覆盖完整图片区域。
             .fillMaxSize()
+            .onSizeChanged { canvasSize = it }
             // 使用离屏图层进行合成。
             // 原因：BlendMode.Clear 会清除当前绘制目标上的像素。如果直接作用在窗口画布上，
             // 可能把窗口背景也清掉，导致裁剪区域显示异常（例如变黑）。
@@ -57,13 +61,17 @@ fun CropBox(modifier: Modifier = Modifier) {
             }
             // 监听拖拽手势，让用户可以移动整个裁剪框。
             // Unit 作为 key 表示这个 pointerInput 生命周期不依赖外部参数变化。
-            .pointerInput(Unit) {
+            .pointerInput(canvasSize) {
                 detectDragGestures { change, dragAmount ->
                     // 消费本次手势事件，避免拖动事件继续向下传递，引起底层组件同时响应。
                     change.consume()
                     // dragAmount 是本次手指移动的增量。
                     // translate 会在不改变宽高的情况下平移矩形，从而实现“拖动裁剪框”的效果。
-                    cropRect = cropRect.translate(dragAmount.x, dragAmount.y)
+//                    cropRect = cropRect.translate(dragAmount.x, dragAmount.y)
+                    cropRect = cropRect.moveInsideCanvas(
+                        dragAmount = dragAmount,
+                        canvasSize = Size(canvasSize.width.toFloat(), canvasSize.height.toFloat())
+                    )
                 }
             }
     ) {
@@ -119,4 +127,25 @@ fun CropBox(modifier: Modifier = Modifier) {
             )
         }
     }
+}
+
+private fun Rect.moveInsideCanvas(
+    dragAmount: Offset,
+    canvasSize: Size
+): Rect {
+    val newLeft = left + dragAmount.x
+    val newTop = top + dragAmount.y
+
+    val maxLeft = canvasSize.width - width
+    val maxTop = canvasSize.height - height
+
+    val fixedLeft = newLeft.coerceIn(0f, maxLeft)
+    val fixedTop = newTop.coerceIn(0f, maxTop)
+
+    return Rect(
+        left = fixedLeft,
+        top = fixedTop,
+        right = fixedLeft + width,
+        bottom = fixedTop + height
+    )
 }
