@@ -70,6 +70,226 @@ QuickCrop/
 - `ImageCropRepository` 负责图片解码与裁剪结果输出
 - `CropAspectRatio` 定义了当前支持的裁剪比例
 
+### Compose 自定义绘制速查
+
+图片裁剪框这类 UI 不一定适合完全用现成组件拼出来。比如半透明遮罩、挖空区域、九宫格辅助线、手柄、选区边框等效果，通常会用 Compose 的绘制 API 自己画。
+
+#### Canvas
+
+`Canvas` 是 Compose 提供的画布组件。它会创建一块可以绘制图形的区域，绘制代码写在 `Canvas { ... }` 代码块里。
+
+作用：
+
+- 绘制自定义图形，比如矩形、线条、圆形、路径、图片等
+- 适合实现裁剪框、时间轴、波形图、进度条、标尺、涂鸦等自定义 UI
+- 绘制逻辑会随着 Compose 状态变化自动重新执行
+
+写法：
+
+```kotlin
+Canvas(
+    modifier = Modifier.fillMaxSize()
+) {
+    drawRect(
+        color = Color.Black.copy(alpha = 0.55f),
+        size = size
+    )
+}
+```
+
+#### Rect
+
+`Rect` 用来描述一个矩形区域，它本身不负责绘制，只保存矩形的边界坐标。
+
+作用：
+
+- 表示裁剪框、选区、碰撞区域、点击区域等矩形范围
+- 可以通过 `left`、`top`、`right`、`bottom` 获取四条边的位置
+- 可以通过 `width`、`height` 获取宽高
+- 可以用 `translate()` 平移矩形，适合拖动裁剪框这类场景
+
+写法：
+
+```kotlin
+var cropRect by remember {
+    mutableStateOf(
+        Rect(
+            left = 100f,
+            top = 200f,
+            right = 700f,
+            bottom = 800f
+        )
+    )
+}
+
+cropRect = cropRect.translate(dx, dy)
+```
+
+#### Offset
+
+`Offset` 表示一个点的位置，也就是二维坐标里的 `(x, y)`。
+
+作用：
+
+- 指定矩形左上角
+- 指定线条起点和终点
+- 指定圆心、触摸点、拖动位置等
+
+写法：
+
+```kotlin
+val topLeft = Offset(x = 100f, y = 200f)
+```
+
+#### Size
+
+`Size` 表示一个尺寸，也就是宽度和高度。
+
+作用：
+
+- 指定矩形、椭圆、图片等绘制区域的大小
+- `Canvas` 代码块里的 `size` 表示当前画布的完整尺寸
+
+写法：
+
+```kotlin
+val rectSize = Size(
+    width = cropRect.width,
+    height = cropRect.height
+)
+```
+
+#### drawRect
+
+`drawRect` 用来绘制矩形。默认是填充整个矩形区域，如果传入 `style = Stroke(...)`，则只绘制边框。
+
+作用：
+
+- 绘制背景、遮罩、选区、裁剪框边框
+- 配合 `BlendMode.Clear` 可以把某个区域清空，做出“挖空遮罩”的效果
+
+填充矩形：
+
+```kotlin
+drawRect(
+    color = Color.Black.copy(alpha = 0.55f),
+    size = size
+)
+```
+
+绘制边框矩形：
+
+```kotlin
+drawRect(
+    color = Color.White,
+    topLeft = Offset(cropRect.left, cropRect.top),
+    size = Size(cropRect.width, cropRect.height),
+    style = Stroke(width = 4f)
+)
+```
+
+清空矩形区域：
+
+```kotlin
+drawRect(
+    color = Color.Transparent,
+    topLeft = Offset(cropRect.left, cropRect.top),
+    size = Size(cropRect.width, cropRect.height),
+    blendMode = BlendMode.Clear
+)
+```
+
+#### drawLine
+
+`drawLine` 用来绘制一条直线，需要指定起点、终点、颜色和线宽。
+
+作用：
+
+- 绘制九宫格辅助线
+- 绘制时间轴刻度
+- 绘制分割线、指示线、参考线等
+
+写法：
+
+```kotlin
+drawLine(
+    color = Color.White.copy(alpha = 0.6f),
+    start = Offset(x, cropRect.top),
+    end = Offset(x, cropRect.bottom),
+    strokeWidth = 2f
+)
+```
+
+#### 常用绘制函数
+
+除了 `drawRect` 和 `drawLine`，Compose Canvas 还提供了很多绘制函数：
+
+```kotlin
+drawCircle()      // 绘制圆形
+drawOval()        // 绘制椭圆
+drawArc()         // 绘制圆弧或扇形
+drawPath()        // 绘制自定义路径，适合复杂形状
+drawPoints()      // 绘制多个点
+drawImage()       // 绘制图片
+drawRoundRect()   // 绘制圆角矩形
+drawText()        // 绘制文字，通常需要配合 TextMeasurer
+```
+
+示例：
+
+```kotlin
+drawCircle(
+    color = Color.Red,
+    radius = 50f,
+    center = Offset(100f, 100f)
+)
+
+drawRoundRect(
+    color = Color.Blue,
+    topLeft = Offset(50f, 50f),
+    size = Size(200f, 100f),
+    cornerRadius = CornerRadius(16f, 16f)
+)
+```
+
+#### Modifier 绘制相关 API
+
+除了直接使用 `Canvas` 组件，也可以通过 `Modifier` 在普通 Compose 组件上增加绘制逻辑。
+
+```kotlin
+Modifier.drawBehind {
+    drawRect(Color.Red)
+}
+```
+
+常用 API：
+
+- `drawBehind { ... }`：在组件内容背后绘制，适合画背景、底线、装饰图形
+- `drawWithContent { ... }`：可以控制“先画内容还是先画自定义图形”，适合遮罩、前景覆盖等效果
+- `drawWithCache { ... }`：可以缓存复杂计算结果，适合路径、渐变、文字测量等开销较大的绘制
+
+#### 自定义 View 一定要用这些函数吗
+
+不一定。
+
+如果是 Compose 页面里的普通 UI，优先使用现成组件，例如 `Box`、`Row`、`Column`、`Image`、`Text`、`Button` 等。只有当现成组件很难表达某种视觉效果时，才需要使用 `Canvas` 或绘制相关 `Modifier`。
+
+如果是在传统 Android View 体系里自定义 View，通常是继承 `View` 并重写 `onDraw()`：
+
+```kotlin
+override fun onDraw(canvas: android.graphics.Canvas) {
+    super.onDraw(canvas)
+    canvas.drawRect(...)
+    canvas.drawLine(...)
+}
+```
+
+所以可以这样理解：
+
+- Compose 自定义绘制：常用 `Canvas`、`drawRect`、`drawLine` 等 Compose 绘制 API
+- 传统 Android 自定义 View：常用 `android.graphics.Canvas`、`Paint`、`onDraw()`
+- 普通界面开发：优先用现成 Compose 组件，不需要手动画图
+
 ## 运行方式
 
 1. 使用 Android Studio 打开仓库根目录
