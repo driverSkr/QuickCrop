@@ -13,6 +13,8 @@ composeBom = "2024.09.00"
 media3 = "1.10.0"
 material = "1.10.0"
 activityKtx = "1.8.0"
+coil2 = "2.7.0"
+coil3 = "3.0.4"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,6 +40,8 @@ androidx-media3-ui-compose = { group = "androidx.media3", name = "media3-ui-comp
 androidx-media3-ui-compose-material3 = { group = "androidx.media3", name = "media3-ui-compose-material3", version.ref = "media3" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activityKtx" }
+coil = { group = "io.coil-kt", name = "coil", version.ref = "coil2" }
+coil3-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil3" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
