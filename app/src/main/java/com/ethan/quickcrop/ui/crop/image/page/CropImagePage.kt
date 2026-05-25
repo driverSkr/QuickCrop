@@ -45,6 +45,6 @@ fun CropImagePage(sourceUri: Uri?) {
             Text(text = "图片加载中...")
         }
 
-        CropBox(modifier = Modifier.fillMaxSize().align(Alignment.Center))
+        CropBox()
     }
 }

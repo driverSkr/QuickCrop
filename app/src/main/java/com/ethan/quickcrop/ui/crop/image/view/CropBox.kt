@@ -32,10 +32,17 @@ import androidx.compose.ui.input.pointer.pointerInput
  */
 @Composable
 fun CropBox(modifier: Modifier = Modifier) {
-    // cropRect 保存当前裁剪框在 Canvas 坐标系中的位置和大小。
-    // remember + mutableStateOf 会让 Compose 记住这个矩形状态；当拖动时更新 cropRect，
-    // Compose 会自动触发重组并重新绘制 Canvas，所以裁剪框能跟随手指移动。
-    var cropRect by remember { mutableStateOf(Rect(left = 100f, top = 200f, right = 700f, bottom = 800f)) }
+    // cropRect 保存当前裁剪框在 Canvas 坐标系中的位置和大小，这段 Rect 指的是 在当前绘制区域里的矩形坐标，也就是相对于 Canvas 左上角的坐标。
+    var cropRect by remember {
+        mutableStateOf(
+            Rect(//左上角：(100, 200) 右上角：(700, 200) 左下角：(100, 800) 右下角：(700, 800)
+                left = 100f,    // 左边界距离 Canvas 左边 100 像素
+                top = 200f,     // 上边界距离 Canvas 顶部 200 像素
+                right = 700f,   // 右边界距离 Canvas 左边 700 像素
+                bottom = 800f   // 下边界距离 Canvas 顶部 800 像素
+            )
+        )
+    }
 
     Canvas(
         modifier = modifier
