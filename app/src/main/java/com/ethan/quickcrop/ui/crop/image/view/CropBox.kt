@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
+import com.ethan.quickcrop.ui.crop.image.extension.moveInsideCanvas
 
 /**
  * 自定义图片裁剪框组件。
@@ -127,25 +128,4 @@ fun CropBox(modifier: Modifier = Modifier) {
             )
         }
     }
-}
-
-private fun Rect.moveInsideCanvas(
-    dragAmount: Offset,
-    canvasSize: Size
-): Rect {
-    val newLeft = left + dragAmount.x
-    val newTop = top + dragAmount.y
-
-    val maxLeft = canvasSize.width - width
-    val maxTop = canvasSize.height - height
-
-    val fixedLeft = newLeft.coerceIn(0f, maxLeft)
-    val fixedTop = newTop.coerceIn(0f, maxTop)
-
-    return Rect(
-        left = fixedLeft,
-        top = fixedTop,
-        right = fixedLeft + width,
-        bottom = fixedTop + height
-    )
 }
