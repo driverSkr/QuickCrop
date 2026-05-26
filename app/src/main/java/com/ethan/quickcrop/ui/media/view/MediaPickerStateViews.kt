@@ -45,7 +45,7 @@ internal fun LoadingState(modifier: Modifier = Modifier) {
 internal fun EmptyPhotoState(modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painter = painterResource(id = R.mipmap.img_empty_photo), contentScale = ContentScale.Crop, contentDescription = null, modifier = Modifier.size(80.dp))
+            Image(painter = painterResource(id = R.drawable.img_empty_photo), contentScale = ContentScale.Crop, contentDescription = null, modifier = Modifier.size(80.dp))
             Spacer(modifier = Modifier.height(28.dp))
             Text(
                 text = stringResource(R.string.media_picker_no_photos),
@@ -67,7 +67,7 @@ internal fun PermissionDeniedState(
 ) {
     Box(modifier = modifier.fillMaxWidth().offset(y = (-50).dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painter = painterResource(id = R.mipmap.img_empty_photo), contentScale = ContentScale.Crop, contentDescription = null, modifier = Modifier.size(80.dp))
+            Image(painter = painterResource(id = R.drawable.img_empty_photo), contentScale = ContentScale.Crop, contentDescription = null, modifier = Modifier.size(80.dp))
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = stringResource(R.string.media_picker_no_photos),

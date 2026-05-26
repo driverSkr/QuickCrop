@@ -43,8 +43,10 @@ fun ResizableCropBox(
     var dragMode by remember { mutableStateOf(DragMode.None) }
     // 边角触摸半径
     val cornerTouchRadius = 60f
-    // 圆角绘制半径
-    val cornerDrawRadius = 12f
+    // 角标长度
+    val cornerHandleLength = 52f
+    // 角标粗细
+    val cornerHandleThickness = 10f
 
     Canvas(modifier = modifier
         .fillMaxSize()
@@ -122,7 +124,8 @@ fun ResizableCropBox(
         // 5. 四角控制点
         drawCornerHandles(
             rect = cropRect,
-            radius = cornerDrawRadius
+            length = cornerHandleLength,
+            thickness = cornerHandleThickness
         )
     }
 }
@@ -213,24 +216,84 @@ private fun DrawScope.drawRuleOfThirds(rect: Rect) {
 }
 
 /**
- * 绘制四角控制点
+ * 绘制四角 L 形控制柄。
+ *
+ * 每个角由一横一竖两个矩形拼成，矩形粗细一半落在裁剪框内、一半落在裁剪框外，
+ * 形成常见图片裁剪框里那种“内侧被挖掉”的直角控制点。
  */
 private fun DrawScope.drawCornerHandles(
     rect: Rect,
-    radius: Float
+    length: Float,
+    thickness: Float
 ) {
-    val points = listOf(
-        Offset(rect.left, rect.top),
-        Offset(rect.right, rect.top),
-        Offset(rect.left, rect.bottom),
-        Offset(rect.right, rect.bottom)
-    )
+    val halfThickness = thickness / 2f
 
-    points.forEach { point ->
-        drawCircle(
-            color = Color.White,
-            radius = radius,
-            center = point
-        )
+    drawCornerHandle(
+        corner = Offset(rect.left, rect.top),
+        horizontalDirection = 1f,
+        verticalDirection = 1f,
+        length = length,
+        thickness = thickness,
+        halfThickness = halfThickness
+    )
+    drawCornerHandle(
+        corner = Offset(rect.right, rect.top),
+        horizontalDirection = -1f,
+        verticalDirection = 1f,
+        length = length,
+        thickness = thickness,
+        halfThickness = halfThickness
+    )
+    drawCornerHandle(
+        corner = Offset(rect.left, rect.bottom),
+        horizontalDirection = 1f,
+        verticalDirection = -1f,
+        length = length,
+        thickness = thickness,
+        halfThickness = halfThickness
+    )
+    drawCornerHandle(
+        corner = Offset(rect.right, rect.bottom),
+        horizontalDirection = -1f,
+        verticalDirection = -1f,
+        length = length,
+        thickness = thickness,
+        halfThickness = halfThickness
+    )
+}
+
+/**
+ * 绘制单个角的横向和纵向矩形边。
+ */
+private fun DrawScope.drawCornerHandle(
+    corner: Offset,
+    horizontalDirection: Float,
+    verticalDirection: Float,
+    length: Float,
+    thickness: Float,
+    halfThickness: Float
+) {
+    val horizontalLeft = if (horizontalDirection > 0f) {
+        corner.x - halfThickness
+    } else {
+        corner.x - length + halfThickness
     }
+    val verticalTop = if (verticalDirection > 0f) {
+        corner.y - halfThickness
+    } else {
+        corner.y - length + halfThickness
+    }
+    val verticalLeft = corner.x - halfThickness
+    val horizontalTop = corner.y - halfThickness
+
+    drawRect(
+        color = Color.White,
+        topLeft = Offset(horizontalLeft, horizontalTop),
+        size = Size(length, thickness)
+    )
+    drawRect(
+        color = Color.White,
+        topLeft = Offset(verticalLeft, verticalTop),
+        size = Size(thickness, length)
+    )
 }
