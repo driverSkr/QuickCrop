@@ -15,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import com.ethan.quickcrop.ui.crop.image.view.CropBox
 import com.ethan.quickcrop.ui.crop.image.view.ResizableCropBox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -46,7 +45,6 @@ fun CropImagePage(sourceUri: Uri?) {
             Text(text = "图片加载中...")
         }
 
-//        CropBox()
         ResizableCropBox(
             modifier = Modifier.fillMaxSize(),
             aspectRatio = null

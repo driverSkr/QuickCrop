@@ -3,6 +3,7 @@ package com.ethan.base
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
@@ -13,6 +14,7 @@ import android.widget.Toast
 import androidx.annotation.ColorInt
 import androidx.annotation.LayoutRes
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -37,6 +39,7 @@ abstract class BaseActivity : AppCompatActivity {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        applyDefaultSystemBars()
         onActivityCreated(savedInstanceState)
         logLifecycle("onCreate")
     }
@@ -199,24 +202,44 @@ abstract class BaseActivity : AppCompatActivity {
      * 配置状态栏、导航栏和 edge-to-edge 显示。
      *
      * edgeToEdge 为 true 时内容可以延伸到系统栏区域；
-     * lightStatusBar/lightNavigationBar 控制系统栏图标颜色；
+     * lightStatusBar/lightNavigationBar 控制系统栏图标颜色，传 null 时根据对应背景色自动判断；
      * statusBarColor/navigationBarColor 可用于传统非沉浸式页面设置栏背景色。
      */
     protected fun configureSystemBars(
         edgeToEdge: Boolean = true,
-        lightStatusBar: Boolean = false,
-        lightNavigationBar: Boolean = false,
+        lightStatusBar: Boolean? = null,
+        lightNavigationBar: Boolean? = null,
         @ColorInt statusBarColor: Int? = null,
         @ColorInt navigationBarColor: Int? = null
     ) {
         WindowCompat.setDecorFitsSystemWindows(window, !edgeToEdge)
-        statusBarColor?.let { window.statusBarColor = it }
-        navigationBarColor?.let { window.navigationBarColor = it }
+        // 未显式传入颜色时，沿用当前 Window 上的系统栏颜色，保证只改图标深浅也能生效。
+        val resolvedStatusBarColor = statusBarColor ?: window.statusBarColor
+        val resolvedNavigationBarColor = navigationBarColor ?: window.navigationBarColor
+        window.statusBarColor = resolvedStatusBarColor
+        window.navigationBarColor = resolvedNavigationBarColor
 
         WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = lightStatusBar
+            // Android 的 light system bar 表示“浅色背景 + 深色图标”。
+            // 这里根据背景亮度自动判断，避免每个页面手动维护状态栏文字颜色。
+            isAppearanceLightStatusBars = lightStatusBar ?: resolvedStatusBarColor.shouldUseDarkSystemBarIcons()
             isAppearanceLightNavigationBars = lightNavigationBar
+                ?: resolvedNavigationBarColor.shouldUseDarkSystemBarIcons()
         }
+    }
+
+    private fun applyDefaultSystemBars() {
+        // App 默认使用黑色页面背景，因此系统栏也默认设为黑色，并自动使用浅色图标。
+        configureSystemBars(
+            edgeToEdge = false,
+            statusBarColor = Color.BLACK,
+            navigationBarColor = Color.BLACK
+        )
+    }
+
+    private fun @receiver:ColorInt Int.shouldUseDarkSystemBarIcons(): Boolean {
+        // 亮度超过阈值时认为背景偏亮，此时需要深色状态栏/导航栏图标。
+        return ColorUtils.calculateLuminance(this) > LIGHT_SYSTEM_BAR_ICON_THRESHOLD
     }
 
     private fun logLifecycle(event: String) {
@@ -227,5 +250,6 @@ abstract class BaseActivity : AppCompatActivity {
 
     private companion object {
         const val DEFAULT_CLICK_INTERVAL_MS = 600L
+        const val LIGHT_SYSTEM_BAR_ICON_THRESHOLD = 0.5
     }
 }

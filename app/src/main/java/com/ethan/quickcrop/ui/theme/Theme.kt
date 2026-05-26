@@ -1,9 +1,13 @@
 package com.ethan.quickcrop.ui.theme
 
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 
 private val LightColors = lightColorScheme(
     primary = Mint40,
@@ -32,9 +36,10 @@ private val DarkColors = darkColorScheme(
     onSecondary = Ink10,
     secondaryContainer = Sand40,
     onSecondaryContainer = Ink90,
-    background = Ink10,
+    // 全局页面默认背景使用纯黑，避免未显式设置背景的 Compose 页面露出浅色底。
+    background = Color.Black,
     onBackground = Ink90,
-    surface = Ink10,
+    surface = Color.Black,
     onSurface = Ink90,
     surfaceVariant = androidx.compose.ui.graphics.Color(0xFF22313B),
     onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFFB8C4CC),
@@ -43,14 +48,19 @@ private val DarkColors = darkColorScheme(
 
 @Composable
 fun QuickCropTheme(
-    darkTheme: Boolean = false,
+    darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) DarkColors else LightColors
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+        typography = Typography
+    ) {
+        // 统一给 Compose 页面铺一层默认背景，业务页面仍可在内部覆盖自己的背景色。
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = colorScheme.background,
+            content = content
+        )
+    }
 }
-
