@@ -27,13 +27,34 @@ fun Rect.moveInsideCanvas(
     )
 }
 
+fun Rect.moveInsideBounds(
+    dragAmount: Offset,
+    bounds: Rect
+): Rect {
+    val newLeft = left + dragAmount.x
+    val newTop = top + dragAmount.y
+
+    val maxLeft = bounds.right - width
+    val maxTop = bounds.bottom - height
+
+    val fixedLeft = newLeft.coerceIn(bounds.left, maxLeft)
+    val fixedTop = newTop.coerceIn(bounds.top, maxTop)
+
+    return Rect(
+        left = fixedLeft,
+        top = fixedTop,
+        right = fixedLeft + width,
+        bottom = fixedTop + height
+    )
+}
+
 /**
  * 固定比例缩放
  */
 fun Rect.resizeWithAspectRatio(
     mode: DragMode,
     dragAmount: Offset,
-    canvasSize: Size,
+    bounds: Rect,
     minSize: Float,
     aspectRatio: Float
 ): Rect {
@@ -112,9 +133,9 @@ fun Rect.resizeWithAspectRatio(
         newBottom = fixedY
     }
 
-    // 超出边界时，按边界重新缩小
-    if (newLeft < 0f) {
-        newLeft = 0f
+    // 超出图片边界时，按边界重新缩小，避免裁剪到图片外的空白区域。
+    if (newLeft < bounds.left) {
+        newLeft = bounds.left
         newWidth = newRight - newLeft
         newHeight = newWidth / aspectRatio
 
@@ -125,8 +146,8 @@ fun Rect.resizeWithAspectRatio(
         }
     }
 
-    if (newRight > canvasSize.width) {
-        newRight = canvasSize.width
+    if (newRight > bounds.right) {
+        newRight = bounds.right
         newWidth = newRight - newLeft
         newHeight = newWidth / aspectRatio
 
@@ -137,8 +158,8 @@ fun Rect.resizeWithAspectRatio(
         }
     }
 
-    if (newTop < 0f) {
-        newTop = 0f
+    if (newTop < bounds.top) {
+        newTop = bounds.top
         newHeight = newBottom - newTop
         newWidth = newHeight * aspectRatio
 
@@ -149,8 +170,8 @@ fun Rect.resizeWithAspectRatio(
         }
     }
 
-    if (newBottom > canvasSize.height) {
-        newBottom = canvasSize.height
+    if (newBottom > bounds.bottom) {
+        newBottom = bounds.bottom
         newHeight = newBottom - newTop
         newWidth = newHeight * aspectRatio
 
@@ -162,10 +183,10 @@ fun Rect.resizeWithAspectRatio(
     }
 
     return Rect(
-        left = newLeft.coerceIn(0f, canvasSize.width),
-        top = newTop.coerceIn(0f, canvasSize.height),
-        right = newRight.coerceIn(0f, canvasSize.width),
-        bottom = newBottom.coerceIn(0f, canvasSize.height)
+        left = newLeft.coerceIn(bounds.left, bounds.right),
+        top = newTop.coerceIn(bounds.top, bounds.bottom),
+        right = newRight.coerceIn(bounds.left, bounds.right),
+        bottom = newBottom.coerceIn(bounds.top, bounds.bottom)
     )
 }
 
@@ -175,7 +196,7 @@ fun Rect.resizeWithAspectRatio(
 fun Rect.resizeFree(
     mode: DragMode,
     dragAmount: Offset,
-    canvasSize: Size,
+    bounds: Rect,
     minSize: Float
 ): Rect {
     var newLeft = left
@@ -207,11 +228,11 @@ fun Rect.resizeFree(
         else -> Unit
     }
 
-    // 边界限制
-    newLeft = newLeft.coerceIn(0f, right - minSize)
-    newTop = newTop.coerceIn(0f, bottom - minSize)
-    newRight = newRight.coerceIn(left + minSize, canvasSize.width)
-    newBottom = newBottom.coerceIn(top + minSize, canvasSize.height)
+    // 边界限制在图片实际显示区域内，避免自由比例拖到空白位置。
+    newLeft = newLeft.coerceIn(bounds.left, right - minSize)
+    newTop = newTop.coerceIn(bounds.top, bottom - minSize)
+    newRight = newRight.coerceIn(left + minSize, bounds.right)
+    newBottom = newBottom.coerceIn(top + minSize, bounds.bottom)
 
     return Rect(newLeft, newTop, newRight, newBottom)
 }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,10 +22,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
-import com.ethan.quickcrop.extension.moveInsideCanvas
+import com.ethan.quickcrop.extension.moveInsideBounds
 import com.ethan.quickcrop.extension.resizeFree
 import com.ethan.quickcrop.extension.resizeWithAspectRatio
 import com.ethan.quickcrop.ui.crop.image.model.DragMode
+import kotlin.math.min
 
 /**
  * 支持四角缩放 + 固定比例的裁剪框
@@ -32,6 +34,7 @@ import com.ethan.quickcrop.ui.crop.image.model.DragMode
 @Composable
 fun ResizableCropBox(
     modifier: Modifier = Modifier,
+    cropBounds: Rect = Rect.Zero,
     aspectRatio: Float? = 1f,   // null 表示自由比例；1f 表示 1:1；16f / 9f 表示 16:9
     minSize: Float = 160f,
 ) {
@@ -48,6 +51,13 @@ fun ResizableCropBox(
     // 角标粗细
     val cornerHandleThickness = 10f
 
+    LaunchedEffect(cropBounds, aspectRatio) {
+        // 图片加载或比例切换时，裁剪框重置为图片区域内可容纳的最大矩形。
+        if (!cropBounds.isEmpty) {
+            cropRect = createInitialCropRect(cropBounds, aspectRatio)
+        }
+    }
+
     Canvas(modifier = modifier
         .fillMaxSize()
         .onSizeChanged{
@@ -56,7 +66,7 @@ fun ResizableCropBox(
         .graphicsLayer {
             compositingStrategy = CompositingStrategy.Offscreen
         }
-        .pointerInput(canvasSize, aspectRatio) {
+        .pointerInput(canvasSize, cropBounds, aspectRatio) {
             detectDragGestures(
                 onDragStart = { offset ->
                     dragMode = detectDragMode(
@@ -73,10 +83,13 @@ fun ResizableCropBox(
                 },
                 onDrag = { change, dragAmount ->
                     change.consume()
-                    val size = Size(canvasSize.width.toFloat(), canvasSize.height.toFloat())
+                    if (cropBounds.isEmpty) {
+                        return@detectDragGestures
+                    }
+                    val safeMinSize = minSize.coerceAtMost(min(cropBounds.width, cropBounds.height))
                     cropRect = when (dragMode) {
                         DragMode.Move -> {
-                            cropRect.moveInsideCanvas(dragAmount, size)
+                            cropRect.moveInsideBounds(dragAmount, cropBounds)
                         }
                         DragMode.TopLeft,
                         DragMode.TopRight,
@@ -85,8 +98,8 @@ fun ResizableCropBox(
                             cropRect.resizeFromCorner(
                                 mode = dragMode,
                                 dragAmount = dragAmount,
-                                canvasSize = size,
-                                minSize = minSize,
+                                bounds = cropBounds,
+                                minSize = safeMinSize,
                                 aspectRatio = aspectRatio
                             )
                         }
@@ -96,6 +109,10 @@ fun ResizableCropBox(
             )
         }
     ) {
+        if (cropBounds.isEmpty || cropRect.isEmpty) {
+            return@Canvas
+        }
+
         // 1. 半透明遮罩
         drawRect(
             color = Color.Black.copy(alpha = 0.55f),
@@ -167,7 +184,7 @@ private fun Offset.distanceTo(other: Offset): Float {
 private fun Rect.resizeFromCorner(
     mode: DragMode,
     dragAmount: Offset,
-    canvasSize: Size,
+    bounds: Rect,
     minSize: Float,
     aspectRatio: Float?
 ): Rect {
@@ -175,18 +192,45 @@ private fun Rect.resizeFromCorner(
         resizeFree(
             mode = mode,
             dragAmount = dragAmount,
-            canvasSize = canvasSize,
+            bounds = bounds,
             minSize = minSize
         )
     } else {
         resizeWithAspectRatio(
             mode = mode,
             dragAmount = dragAmount,
-            canvasSize = canvasSize,
+            bounds = bounds,
             minSize = minSize,
             aspectRatio = aspectRatio
         )
     }
+}
+
+private fun createInitialCropRect(bounds: Rect, aspectRatio: Float?): Rect {
+    if (aspectRatio == null || aspectRatio <= 0f) {
+        return bounds
+    }
+
+    val boundsRatio = bounds.width / bounds.height
+    val cropWidth: Float
+    val cropHeight: Float
+    if (boundsRatio > aspectRatio) {
+        cropHeight = bounds.height
+        cropWidth = cropHeight * aspectRatio
+    } else {
+        cropWidth = bounds.width
+        cropHeight = cropWidth / aspectRatio
+    }
+
+    // 按目标比例在图片内居中铺满，避免裁剪框覆盖到图片外的空白区域。
+    val left = bounds.left + (bounds.width - cropWidth) / 2f
+    val top = bounds.top + (bounds.height - cropHeight) / 2f
+    return Rect(
+        left = left,
+        top = top,
+        right = left + cropWidth,
+        bottom = top + cropHeight
+    )
 }
 
 /**
