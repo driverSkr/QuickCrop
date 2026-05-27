@@ -20,7 +20,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
-import com.ethan.quickcrop.ui.crop.image.extension.moveInsideCanvas
+import com.ethan.quickcrop.extension.moveInsideCanvas
 
 /**
  * 自定义图片裁剪框组件。

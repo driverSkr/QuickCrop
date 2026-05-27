@@ -1,9 +1,10 @@
-package com.ethan.quickcrop.ui.crop.image.extension
+package com.ethan.quickcrop.extension
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import com.ethan.quickcrop.ui.crop.image.model.DragMode
+import kotlin.math.abs
 
 fun Rect.moveInsideCanvas(
     dragAmount: Offset,
@@ -74,7 +75,7 @@ fun Rect.resizeWithAspectRatio(
         else -> return this
     }
 
-    var newWidth = kotlin.math.abs(movingX - fixedX)
+    var newWidth = abs(movingX - fixedX)
     var newHeight = newWidth / aspectRatio
 
     if (newWidth < minSize) {

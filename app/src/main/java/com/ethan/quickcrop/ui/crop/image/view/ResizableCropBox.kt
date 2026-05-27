@@ -21,9 +21,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
-import com.ethan.quickcrop.ui.crop.image.extension.moveInsideCanvas
-import com.ethan.quickcrop.ui.crop.image.extension.resizeFree
-import com.ethan.quickcrop.ui.crop.image.extension.resizeWithAspectRatio
+import com.ethan.quickcrop.extension.moveInsideCanvas
+import com.ethan.quickcrop.extension.resizeFree
+import com.ethan.quickcrop.extension.resizeWithAspectRatio
 import com.ethan.quickcrop.ui.crop.image.model.DragMode
 
 /**
