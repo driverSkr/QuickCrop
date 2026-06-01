@@ -207,29 +207,41 @@ private fun Rect.resizeFromCorner(
 }
 
 private fun createInitialCropRect(bounds: Rect, aspectRatio: Float?): Rect {
+    // 初始裁剪框缩小到 bounds 的 90%，留出拖拽移动的空间。
+    val initialScale = 0.9f
+
     if (aspectRatio == null || aspectRatio <= 0f) {
-        return bounds
+        val cropWidth = bounds.width * initialScale
+        val cropHeight = bounds.height * initialScale
+        val left = bounds.left + (bounds.width - cropWidth) / 2f
+        val top = bounds.top + (bounds.height - cropHeight) / 2f
+        return Rect(
+            left = left,
+            top = top,
+            right = left + cropWidth,
+            bottom = top + cropHeight
+        )
     }
 
     val boundsRatio = bounds.width / bounds.height
-    val cropWidth: Float
-    val cropHeight: Float
+    val maxWidth: Float
+    val maxHeight: Float
     if (boundsRatio > aspectRatio) {
-        cropHeight = bounds.height
-        cropWidth = cropHeight * aspectRatio
+        maxHeight = bounds.height * initialScale
+        maxWidth = maxHeight * aspectRatio
     } else {
-        cropWidth = bounds.width
-        cropHeight = cropWidth / aspectRatio
+        maxWidth = bounds.width * initialScale
+        maxHeight = maxWidth / aspectRatio
     }
 
-    // 按目标比例在图片内居中铺满，避免裁剪框覆盖到图片外的空白区域。
-    val left = bounds.left + (bounds.width - cropWidth) / 2f
-    val top = bounds.top + (bounds.height - cropHeight) / 2f
+    // 按目标比例在图片内居中放置，避免裁剪框覆盖到图片外的空白区域。
+    val left = bounds.left + (bounds.width - maxWidth) / 2f
+    val top = bounds.top + (bounds.height - maxHeight) / 2f
     return Rect(
         left = left,
         top = top,
-        right = left + cropWidth,
-        bottom = top + cropHeight
+        right = left + maxWidth,
+        bottom = top + maxHeight
     )
 }
 

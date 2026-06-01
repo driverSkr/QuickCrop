@@ -16,8 +16,8 @@ fun Rect.moveInsideCanvas(
     val maxLeft = canvasSize.width - width
     val maxTop = canvasSize.height - height
 
-    val fixedLeft = newLeft.coerceIn(0f, maxLeft)
-    val fixedTop = newTop.coerceIn(0f, maxTop)
+    val fixedLeft = newLeft.coerceIn(0f, maxLeft.coerceAtLeast(0f))
+    val fixedTop = newTop.coerceIn(0f, maxTop.coerceAtLeast(0f))
 
     return Rect(
         left = fixedLeft,
@@ -31,6 +31,11 @@ fun Rect.moveInsideBounds(
     dragAmount: Offset,
     bounds: Rect
 ): Rect {
+    // 如果裁剪框大于等于边界，直接居中锁定，不处理移动。
+    if (width >= bounds.width || height >= bounds.height) {
+        return this
+    }
+
     val newLeft = left + dragAmount.x
     val newTop = top + dragAmount.y
 
@@ -229,10 +234,10 @@ fun Rect.resizeFree(
     }
 
     // 边界限制在图片实际显示区域内，避免自由比例拖到空白位置。
-    newLeft = newLeft.coerceIn(bounds.left, right - minSize)
-    newTop = newTop.coerceIn(bounds.top, bottom - minSize)
-    newRight = newRight.coerceIn(left + minSize, bounds.right)
-    newBottom = newBottom.coerceIn(top + minSize, bounds.bottom)
+    newLeft = newLeft.coerceIn(bounds.left, (right - minSize).coerceAtLeast(bounds.left))
+    newTop = newTop.coerceIn(bounds.top, (bottom - minSize).coerceAtLeast(bounds.top))
+    newRight = newRight.coerceIn((left + minSize).coerceAtMost(bounds.right), bounds.right)
+    newBottom = newBottom.coerceIn((top + minSize).coerceAtMost(bounds.bottom), bounds.bottom)
 
     return Rect(newLeft, newTop, newRight, newBottom)
 }
