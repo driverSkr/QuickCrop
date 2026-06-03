@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.EdgeEffect
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.TextView
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -143,7 +144,7 @@ private class MediaPhotoGridAdapter : ListAdapter<MediaPhoto, MediaPhotoGridView
 
 private object MediaPhotoDiffCallback : DiffUtil.ItemCallback<MediaPhoto>() {
     override fun areItemsTheSame(oldItem: MediaPhoto, newItem: MediaPhoto): Boolean {
-        return oldItem.id == newItem.id
+        return oldItem.id == newItem.id && oldItem.isVideo == newItem.isVideo
     }
 
     override fun areContentsTheSame(oldItem: MediaPhoto, newItem: MediaPhoto): Boolean {
@@ -154,7 +155,8 @@ private object MediaPhotoDiffCallback : DiffUtil.ItemCallback<MediaPhoto>() {
 private class MediaPhotoGridViewHolder private constructor(
     itemView: SquarePhotoFrameLayout,
     private val imageView: ImageView,
-    private val previewButton: FrameLayout
+    private val previewButton: FrameLayout,
+    private val durationBadgeView: TextView
 ) : RecyclerView.ViewHolder(itemView) {
 
     fun bind(
@@ -170,12 +172,21 @@ private class MediaPhotoGridViewHolder private constructor(
             placeholder(ColorDrawable(AndroidColor.TRANSPARENT))
             error(ColorDrawable(AndroidColor.TRANSPARENT))
         }
+        if (photo.isVideo) {
+            durationBadgeView.visibility = View.VISIBLE
+            durationBadgeView.text = formatDuration(photo.durationMs)
+        } else {
+            durationBadgeView.visibility = View.GONE
+            durationBadgeView.text = null
+        }
     }
 
     fun clear() {
         itemView.setOnClickListener(null)
         previewButton.setOnClickListener(null)
         imageView.setImageDrawable(null)
+        durationBadgeView.visibility = View.GONE
+        durationBadgeView.text = null
     }
 
     companion object {
@@ -215,10 +226,43 @@ private class MediaPhotoGridViewHolder private constructor(
                     FrameLayout.LayoutParams(previewIconSize, previewIconSize, Gravity.CENTER)
                 )
             }
+            val durationBadgeView = TextView(context).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.BOTTOM or Gravity.START
+                    leftMargin = context.dpToPx(6)
+                    bottomMargin = context.dpToPx(6)
+                }
+                setTextColor(AndroidColor.WHITE)
+                textSize = 11f
+                includeFontPadding = false
+                setPadding(context.dpToPx(5), context.dpToPx(3), context.dpToPx(5), context.dpToPx(3))
+                background = GradientDrawable().apply {
+                    cornerRadius = context.dpToPxFloat(8f)
+                    setColor(AndroidColor.argb(178, 0, 0, 0))
+                }
+                visibility = View.GONE
+            }
             root.addView(imageView)
+            root.addView(durationBadgeView)
             root.addView(previewButton)
-            return MediaPhotoGridViewHolder(root, imageView, previewButton)
+            return MediaPhotoGridViewHolder(root, imageView, previewButton, durationBadgeView)
         }
+    }
+}
+
+private fun formatDuration(durationMs: Long): String {
+    val safeDuration = durationMs.coerceAtLeast(0L)
+    val totalSeconds = safeDuration / 1000L
+    val seconds = totalSeconds % 60
+    val minutes = (totalSeconds / 60) % 60
+    val hours = totalSeconds / 3600
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%02d:%02d".format(minutes, seconds)
     }
 }
 

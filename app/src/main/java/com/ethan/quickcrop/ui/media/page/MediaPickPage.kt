@@ -220,6 +220,25 @@ fun MediaPickPage(
             photos.filter { it.bucketId == selectedAlbumId }
         }
     }
+    val previewPhotos = remember(displayPhotos) {
+        displayPhotos.filterNot { it.isVideo }
+    }
+
+    fun handleMediaClick(photo: MediaPhoto) {
+        if (photo.isVideo) {
+            Toast.makeText(context, "功能待完善", Toast.LENGTH_SHORT).show()
+            return
+        }
+        importPhoto(photo)
+    }
+
+    fun handleMediaPreviewClick(photo: MediaPhoto) {
+        if (photo.isVideo) {
+            Toast.makeText(context, "功能待完善", Toast.LENGTH_SHORT).show()
+            return
+        }
+        previewStartIndex = previewPhotos.indexOfFirst { it.id == photo.id && !it.isVideo }.coerceAtLeast(0)
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0C0C0F))) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -261,11 +280,8 @@ fun MediaPickPage(
                         photos = displayPhotos,
                         firstVisiblePositionProvider = { gridFirstVisiblePosition.intValue },
                         onFirstVisiblePositionChange = { gridFirstVisiblePosition.intValue = it },
-                        onPhotoClick = { photo -> importPhoto(photo) },
-                        onPreviewClick = { photo ->
-                            // 右下角预览入口只打开预览，不触发导入校验。
-                            previewStartIndex = displayPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
-                        },
+                        onPhotoClick = { photo -> handleMediaClick(photo) },
+                        onPreviewClick = { photo -> handleMediaPreviewClick(photo) },
                         modifier = Modifier.padding(top = 8.dp).weight(1f)
                     )
                 }
@@ -275,10 +291,10 @@ fun MediaPickPage(
         // 预览页以浮层方式覆盖相册内容，关闭后底层网格和滚动位置保持不变。
         previewStartIndex?.let { initialIndex ->
             MediaPreviewPage(
-                photos = displayPhotos,
+                photos = previewPhotos,
                 initialIndex = initialIndex,
                 onClose = { previewStartIndex = null },
-                onConfirm = { photo -> importPhoto(photo) }
+                onConfirm = { photo -> handleMediaClick(photo) }
             )
         }
 
@@ -296,14 +312,18 @@ internal fun requiredMediaPhotoPermissions(): Array<String> {
     return when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VIDEO,
             Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
         )
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VIDEO
+        )
         else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
 }
 
-// 判断是否已经拥有全量图片权限或 Android 14 的有限照片访问权限。
+// 判断是否已经拥有全量图片/视频权限或 Android 14 的有限照片访问权限。
 internal fun hasMediaPhotoPermission(context: Context): Boolean {
     val imagePermissionGranted = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
@@ -313,13 +333,26 @@ internal fun hasMediaPhotoPermission(context: Context): Boolean {
             ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
         }
     }
+    val videoPermissionGranted = when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+        }
+        else -> {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        }
+    }
     val limitedPhotoGranted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
-    return imagePermissionGranted || limitedPhotoGranted
+    return imagePermissionGranted || videoPermissionGranted || limitedPhotoGranted
 }
 
-// 从 MediaStore 读取系统图片，只查询图片类型并按添加时间倒序生成网格数据源。
+// 从 MediaStore 读取系统图片和视频，并按添加时间倒序生成网格数据源。
 private fun loadMediaPhotos(context: Context): List<MediaPhoto> {
+    return (loadImageItems(context) + loadVideoItems(context))
+        .sortedByDescending { it.dateAdded }
+}
+
+private fun loadImageItems(context: Context): List<MediaPhoto> {
     val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
     val projection = arrayOf(
         MediaStore.Images.Media._ID,
@@ -366,7 +399,9 @@ private fun loadMediaPhotos(context: Context): List<MediaPhoto> {
                             height = cursor.getInt(heightIndex),
                             bucketId = bucketId,
                             bucketName = bucketName,
-                            dateAdded = cursor.getLong(dateAddedIndex)
+                            dateAdded = cursor.getLong(dateAddedIndex),
+                            durationMs = 0L,
+                            isVideo = false
                         )
                     )
                 }
@@ -374,6 +409,67 @@ private fun loadMediaPhotos(context: Context): List<MediaPhoto> {
         }.orEmpty()
     }.onFailure { throwable ->
         Log.e(TAG, "读取相册图片失败", throwable)
+    }.getOrDefault(emptyList())
+}
+
+private fun loadVideoItems(context: Context): List<MediaPhoto> {
+    val collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+    val projection = arrayOf(
+        MediaStore.Video.Media._ID,
+        MediaStore.Video.Media.DISPLAY_NAME,
+        MediaStore.Video.Media.MIME_TYPE,
+        MediaStore.Video.Media.WIDTH,
+        MediaStore.Video.Media.HEIGHT,
+        MediaStore.Video.Media.BUCKET_ID,
+        MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
+        MediaStore.Video.Media.DATE_ADDED,
+        MediaStore.Video.Media.DURATION
+    )
+    val selection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        "${MediaStore.Video.Media.IS_PENDING}=0"
+    } else {
+        null
+    }
+    val sortOrder = "${MediaStore.Video.Media.DATE_ADDED} DESC"
+
+    return runCatching {
+        context.contentResolver.query(collection, projection, selection, null, sortOrder)?.use { cursor ->
+            val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+            val nameIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+            val mimeIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
+            val widthIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
+            val heightIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
+            val bucketIdIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_ID)
+            val bucketNameIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
+            val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+            val durationIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+            buildList {
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idIndex)
+                    val uri = ContentUris.withAppendedId(collection, id)
+                    val bucketId = cursor.getString(bucketIdIndex).orEmpty().ifBlank { UNKNOWN_ALBUM_ID }
+                    val bucketName = cursor.getString(bucketNameIndex).orEmpty()
+                        .ifBlank { context.getString(R.string.media_picker_unknown_album) }
+                    add(
+                        MediaPhoto(
+                            id = id,
+                            uri = uri,
+                            displayName = cursor.getString(nameIndex).orEmpty(),
+                            mimeType = cursor.getString(mimeIndex),
+                            width = cursor.getInt(widthIndex),
+                            height = cursor.getInt(heightIndex),
+                            bucketId = bucketId,
+                            bucketName = bucketName,
+                            dateAdded = cursor.getLong(dateAddedIndex),
+                            durationMs = cursor.getLong(durationIndex),
+                            isVideo = true
+                        )
+                    )
+                }
+            }
+        }.orEmpty()
+    }.onFailure { throwable ->
+        Log.e(TAG, "读取相册视频失败", throwable)
     }.getOrDefault(emptyList())
 }
 

@@ -11,7 +11,9 @@ internal data class MediaPhoto(
     val height: Int,
     val bucketId: String,
     val bucketName: String,
-    val dateAdded: Long
+    val dateAdded: Long,
+    val durationMs: Long = 0L,
+    val isVideo: Boolean = false
 )
 
 internal data class MediaAlbum(
