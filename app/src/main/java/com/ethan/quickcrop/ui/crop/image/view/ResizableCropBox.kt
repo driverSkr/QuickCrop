@@ -37,11 +37,15 @@ fun ResizableCropBox(
     cropBounds: Rect = Rect.Zero,
     aspectRatio: Float? = 1f,   // null 表示自由比例；1f 表示 1:1；16f / 9f 表示 16:9
     minSize: Float = 160f,
+    // 所有裁剪框变化都会回调，页面用它保存最新矩形并参与最终导出。
+    onCropRectChanged: (Rect) -> Unit = {},
+    // 只有用户主动拖动/拉伸时回调，页面用它点亮裁剪按钮。
+    onCropRectUserChanged: (Rect) -> Unit = {},
 ) {
     // 记录画布尺寸
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     // 裁剪框尺寸、位置
-    var cropRect by remember { mutableStateOf(Rect(left = 150f, top = 300f, right = 750f, bottom = 900f)) }
+    var cropRect by remember { mutableStateOf(Rect.Zero) }
     // 拖拽模式
     var dragMode by remember { mutableStateOf(DragMode.None) }
     // 边角触摸半径
@@ -55,6 +59,7 @@ fun ResizableCropBox(
         // 图片加载或比例切换时，裁剪框重置为图片区域内可容纳的最大矩形。
         if (!cropBounds.isEmpty) {
             cropRect = createInitialCropRect(cropBounds, aspectRatio)
+            onCropRectChanged(cropRect)
         }
     }
 
@@ -82,12 +87,13 @@ fun ResizableCropBox(
                     dragMode = DragMode.None
                 },
                 onDrag = { change, dragAmount ->
+                    // 裁剪框手势自己消费拖动，避免和外层可能存在的图片预览手势互相干扰。
                     change.consume()
                     if (cropBounds.isEmpty) {
                         return@detectDragGestures
                     }
                     val safeMinSize = minSize.coerceAtMost(min(cropBounds.width, cropBounds.height))
-                    cropRect = when (dragMode) {
+                    val newCropRect = when (dragMode) {
                         DragMode.Move -> {
                             cropRect.moveInsideBounds(dragAmount, cropBounds)
                         }
@@ -105,6 +111,12 @@ fun ResizableCropBox(
                         }
                         DragMode.None -> cropRect
                      }
+                    if (newCropRect != cropRect) {
+                        // 用户真实拖动后通知页面，便于外层点亮裁剪按钮。
+                        cropRect = newCropRect
+                        onCropRectChanged(newCropRect)
+                        onCropRectUserChanged(newCropRect)
+                    }
                 }
             )
         }

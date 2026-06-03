@@ -22,6 +22,9 @@
             android:name=".ui.crop.video.CropVideoActivity"
             android:exported="false" />
         <activity
+            android:name=".ui.crop.image.preview.CropResultPreviewActivity"
+            android:exported="false" />
+        <activity
             android:name=".ui.crop.image.CropImageActivity"
             android:exported="false" />
         <activity
