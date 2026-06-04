@@ -220,10 +220,6 @@ fun MediaPickPage(
             photos.filter { it.bucketId == selectedAlbumId }
         }
     }
-    val previewPhotos = remember(displayPhotos) {
-        displayPhotos.filterNot { it.isVideo }
-    }
-
     fun handleMediaClick(photo: MediaPhoto) {
         if (photo.isVideo) {
             Toast.makeText(context, "功能待完善", Toast.LENGTH_SHORT).show()
@@ -233,11 +229,8 @@ fun MediaPickPage(
     }
 
     fun handleMediaPreviewClick(photo: MediaPhoto) {
-        if (photo.isVideo) {
-            Toast.makeText(context, "功能待完善", Toast.LENGTH_SHORT).show()
-            return
-        }
-        previewStartIndex = previewPhotos.indexOfFirst { it.id == photo.id && !it.isVideo }.coerceAtLeast(0)
+        // 预览页支持图片和视频，索引直接基于当前相册展示列表计算。
+        previewStartIndex = displayPhotos.indexOfFirst { it.id == photo.id && it.isVideo == photo.isVideo }.coerceAtLeast(0)
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0C0C0F))) {
@@ -291,7 +284,7 @@ fun MediaPickPage(
         // 预览页以浮层方式覆盖相册内容，关闭后底层网格和滚动位置保持不变。
         previewStartIndex?.let { initialIndex ->
             MediaPreviewPage(
-                photos = previewPhotos,
+                photos = displayPhotos,
                 initialIndex = initialIndex,
                 onClose = { previewStartIndex = null },
                 onConfirm = { photo -> handleMediaClick(photo) }
@@ -481,6 +474,7 @@ private fun buildMediaAlbums(context: Context, photos: List<MediaPhoto>): List<M
         name = context.getString(R.string.media_picker_recent),
         count = photos.size,
         coverUri = photos.first().uri,
+        coverIsVideo = photos.first().isVideo,
         latestDateAdded = photos.first().dateAdded
     )
     val bucketAlbums = photos
@@ -492,6 +486,7 @@ private fun buildMediaAlbums(context: Context, photos: List<MediaPhoto>): List<M
                 name = cover.bucketName,
                 count = bucketPhotos.size,
                 coverUri = cover.uri,
+                coverIsVideo = cover.isVideo,
                 latestDateAdded = cover.dateAdded
             )
         }

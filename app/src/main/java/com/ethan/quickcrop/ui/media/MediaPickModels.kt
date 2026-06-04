@@ -21,5 +21,6 @@ internal data class MediaAlbum(
     val name: String,
     val count: Int,
     val coverUri: Uri,
+    val coverIsVideo: Boolean,
     val latestDateAdded: Long
 )

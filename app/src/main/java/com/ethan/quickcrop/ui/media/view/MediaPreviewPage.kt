@@ -1,5 +1,8 @@
 package com.ethan.quickcrop.ui.media.view
 
+import android.graphics.Bitmap
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -22,6 +25,8 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,18 +37,28 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.ethan.quickcrop.R
+import com.ethan.quickcrop.core.media.MediaLibraryRepository
 import com.ethan.quickcrop.ui.media.MediaPhoto
 
 private const val PREVIEW_MIN_SCALE = 1f
@@ -95,13 +110,16 @@ internal fun MediaPreviewPage(
 
         HorizontalPager(
             state = pagerState,
+            beyondViewportPageCount = 0,
             modifier = Modifier
                 .fillMaxSize()
                 .align(Alignment.Center)
                 .padding(top = 112.dp, bottom = 112.dp)
         ) { page ->
-            ZoomablePreviewImage(
-                photo = photos[page],
+            val photo = photos[page]
+            MediaPreviewContent(
+                photo = photo,
+                isCurrentPage = page == pagerState.currentPage,
                 onBlankClick = onClose
             )
         }
@@ -127,6 +145,119 @@ internal fun MediaPreviewPage(
             )
         }
     }
+}
+
+@Composable
+private fun MediaPreviewContent(
+    photo: MediaPhoto,
+    isCurrentPage: Boolean,
+    onBlankClick: () -> Unit
+) {
+    if (photo.isVideo) {
+        VideoPreviewContent(
+            photo = photo,
+            isCurrentPage = isCurrentPage
+        )
+    } else {
+        ZoomablePreviewImage(
+            photo = photo,
+            onBlankClick = onBlankClick
+        )
+    }
+}
+
+@Composable
+private fun VideoPreviewContent(
+    photo: MediaPhoto,
+    isCurrentPage: Boolean
+) {
+    val context = LocalContext.current
+    var coverBitmap by remember(photo.id, photo.uri) { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(photo.uri) {
+        // 非当前视频页只加载封面，不创建播放器，降低左右滑动时的解码和内存压力。
+        coverBitmap = MediaLibraryRepository.loadThumbnail(
+            context = context,
+            uri = photo.uri,
+            isVideo = true,
+            sizePx = 720
+        )
+    }
+
+    Box(
+        modifier = Modifier.fillMaxSize().clipToBounds(),
+        contentAlignment = Alignment.Center
+    ) {
+        coverBitmap?.let { bitmap ->
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        if (isCurrentPage) {
+            PreviewVideoPlayer(photo = photo)
+        }
+    }
+}
+
+@Composable
+private fun PreviewVideoPlayer(photo: MediaPhoto) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val player = remember(photo.uri) {
+        ExoPlayer.Builder(context).build().apply {
+            // 当前页视频自动准备并播放；滑出当前页时 composable 销毁并释放播放器。
+            setMediaItem(MediaItem.fromUri(photo.uri))
+            playWhenReady = true
+            prepare()
+        }
+    }
+
+    DisposableEffect(player, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    player.playWhenReady = true
+                    player.play()
+                }
+                Lifecycle.Event.ON_PAUSE,
+                Lifecycle.Event.ON_STOP -> {
+                    // 页面不可见时立即暂停，避免后台继续占用解码器和音频焦点。
+                    player.pause()
+                    player.playWhenReady = false
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            player.stop()
+            player.release()
+        }
+    }
+
+    AndroidView(
+        factory = { viewContext ->
+            PlayerView(viewContext).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                useController = true
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                this.player = player
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            }
+        },
+        update = { playerView ->
+            playerView.player = player
+        },
+        modifier = Modifier.fillMaxSize()
+    )
 }
 
 @Composable

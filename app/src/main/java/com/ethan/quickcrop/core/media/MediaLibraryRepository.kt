@@ -33,21 +33,38 @@ object MediaLibraryRepository {
         context: Context,
         item: GalleryMediaItem,
         sizePx: Int
+    ): Bitmap? = loadThumbnail(
+        context = context,
+        uri = item.uri,
+        isVideo = item.isVideo,
+        sizePx = sizePx
+    )
+
+    suspend fun loadThumbnail(
+        context: Context,
+        uri: Uri,
+        isVideo: Boolean,
+        sizePx: Int
     ): Bitmap? = withContext(Dispatchers.IO) {
         val safeSize = max(sizePx, 1)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 context.contentResolver.loadThumbnail(
-                    item.uri,
+                    uri,
                     android.util.Size(safeSize, safeSize),
                     null
                 )
             } else {
-                loadLegacyThumbnail(context.contentResolver, item.uri, item.isVideo, safeSize)
+                loadLegacyThumbnail(context.contentResolver, uri, isVideo, safeSize)
             }
         } catch (throwable: Throwable) {
-            Log.w(TAG, "加载缩略图失败：${item.uri}", throwable)
-            null
+            Log.w(TAG, "加载缩略图失败：$uri", throwable)
+            if (isVideo) {
+                // 系统缩略图接口偶发失败时，再尝试直接读取视频关键帧。
+                loadLegacyThumbnail(context.contentResolver, uri, isVideo, safeSize)
+            } else {
+                null
+            }
         }
     }
 
@@ -138,14 +155,14 @@ object MediaLibraryRepository {
         return if (isVideo) {
             val retriever = MediaMetadataRetriever()
             try {
-                val fileDescriptor = resolver.openFileDescriptor(uri, "r")?.fileDescriptor
-                    ?: return null
-                retriever.setDataSource(fileDescriptor)
-                val source = retriever.getFrameAtTime(
-                    0L,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-                ) ?: return null
-                scaleBitmapToSize(source, sizePx)
+                resolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+                    retriever.setDataSource(descriptor.fileDescriptor)
+                    val source = retriever.getFrameAtTime(
+                        0L,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                    ) ?: return null
+                    scaleBitmapToSize(source, sizePx)
+                }
             } catch (throwable: Throwable) {
                 Log.w(TAG, "旧版本视频缩略图读取失败：$uri", throwable)
                 null

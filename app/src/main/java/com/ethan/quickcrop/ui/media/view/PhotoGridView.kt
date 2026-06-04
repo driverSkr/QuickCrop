@@ -5,6 +5,7 @@ import android.graphics.Color as AndroidColor
 import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -23,7 +24,14 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.ethan.quickcrop.R
+import com.ethan.quickcrop.core.media.MediaLibraryRepository
 import com.ethan.quickcrop.ui.media.MediaPhoto
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+
+private const val TAG = "PhotoGridView"
 
 /**
  * 图片网格子页面：使用 AndroidView 承载 RecyclerView，负责缩略图展示、滚动复用和预览入口点击分发。
@@ -158,6 +166,7 @@ private class MediaPhotoGridViewHolder private constructor(
     private val previewButton: FrameLayout,
     private val durationBadgeView: TextView
 ) : RecyclerView.ViewHolder(itemView) {
+    private var thumbnailJob: Job? = null
 
     fun bind(
         photo: MediaPhoto,
@@ -167,10 +176,34 @@ private class MediaPhotoGridViewHolder private constructor(
         itemView.setOnClickListener { onPhotoClick(photo) }
         // 预览入口独立消费点击，避免误触发图片导入。
         previewButton.setOnClickListener { onPreviewClick(photo) }
-        imageView.load(photo.uri) {
-            crossfade(false)
-            placeholder(ColorDrawable(AndroidColor.TRANSPARENT))
-            error(ColorDrawable(AndroidColor.TRANSPARENT))
+
+        thumbnailJob?.cancel()
+        imageView.tag = photo.uri
+        imageView.setImageDrawable(null)
+        if (photo.isVideo) {
+            // 视频缩略图显式读取首帧，避免部分设备上 Coil 直接加载 content Uri 时显示为空。
+            thumbnailJob = CoroutineScope(Dispatchers.Main.immediate).launch {
+                val thumbnail = MediaLibraryRepository.loadThumbnail(
+                    context = itemView.context,
+                    uri = photo.uri,
+                    isVideo = true,
+                    sizePx = 360
+                )
+                if (imageView.tag == photo.uri) {
+                    if (thumbnail != null) {
+                        imageView.setImageBitmap(thumbnail)
+                    } else {
+                        Log.w(TAG, "视频缩略图为空: ${photo.uri}")
+                        imageView.setImageDrawable(ColorDrawable(AndroidColor.TRANSPARENT))
+                    }
+                }
+            }
+        } else {
+            imageView.load(photo.uri) {
+                crossfade(false)
+                placeholder(ColorDrawable(AndroidColor.TRANSPARENT))
+                error(ColorDrawable(AndroidColor.TRANSPARENT))
+            }
         }
         if (photo.isVideo) {
             durationBadgeView.visibility = View.VISIBLE
@@ -182,8 +215,11 @@ private class MediaPhotoGridViewHolder private constructor(
     }
 
     fun clear() {
+        thumbnailJob?.cancel()
+        thumbnailJob = null
         itemView.setOnClickListener(null)
         previewButton.setOnClickListener(null)
+        imageView.tag = null
         imageView.setImageDrawable(null)
         durationBadgeView.visibility = View.GONE
         durationBadgeView.text = null
