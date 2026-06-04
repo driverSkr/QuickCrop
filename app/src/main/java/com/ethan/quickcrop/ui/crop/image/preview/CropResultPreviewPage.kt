@@ -1,7 +1,6 @@
 package com.ethan.quickcrop.ui.crop.image.preview
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.BackHandler
@@ -35,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.quickcrop.R
+import com.ethan.quickcrop.core.image.ImagePreviewDecoder
 import com.ethan.quickcrop.extension.finishActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -47,12 +47,12 @@ fun CropResultPreviewPage(imageUri: Uri?) {
     // 结果预览页的缩放和平移只影响查看效果，不会再参与裁剪导出。
     var imageScale by remember { mutableStateOf(1f) }
     var imageOffset by remember { mutableStateOf(Offset.Zero) }
-    // 从裁剪缓存文件读取结果图，预览页不重新处理原图。
+    // 从裁剪缓存文件读取结果图，预览页按屏幕安全尺寸采样，避免超大结果图绘制崩溃。
     val bitmap by produceState<Bitmap?>(initialValue = null, imageUri) {
         value = imageUri?.let { uri ->
             withContext(Dispatchers.IO) {
                 runCatching {
-                    context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+                    ImagePreviewDecoder.decode(context = context.applicationContext, uri = uri)
                 }.onFailure { throwable ->
                     Log.e(TAG, "读取裁剪结果失败: $uri", throwable)
                 }.getOrNull()

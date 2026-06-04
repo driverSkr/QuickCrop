@@ -2,7 +2,6 @@ package com.ethan.quickcrop.ui.crop.image.page
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -45,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import com.ethan.quickcrop.R
 import com.ethan.quickcrop.core.image.ImageCropProcessor
 import com.ethan.quickcrop.core.image.ImageCropRequest
+import com.ethan.quickcrop.core.image.ImagePreviewDecoder
 import com.ethan.quickcrop.extension.finishActivity
 import com.ethan.quickcrop.ui.crop.image.preview.CropResultPreviewActivity
 import com.ethan.quickcrop.ui.crop.image.view.ResizableCropBox
@@ -57,11 +57,11 @@ private const val TAG = "CropImagePage"
 @Composable
 fun CropImagePage(sourceUri: Uri?) {
     val context = LocalContext.current
-    // 裁剪页使用解码后的 Bitmap 做屏幕预览；真正导出时会重新读取 sourceUri，避免预览图影响输出质量。
+    // 裁剪页只解码屏幕预览图；真正导出时会重新读取 sourceUri，避免预览图影响输出质量。
     val bitmap by produceState<Bitmap?>(initialValue = null, sourceUri) {
         value = sourceUri?.let { uri ->
             withContext(Dispatchers.IO) {
-                context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+                ImagePreviewDecoder.decode(context = context.applicationContext, uri = uri)
             }
         }
     }
