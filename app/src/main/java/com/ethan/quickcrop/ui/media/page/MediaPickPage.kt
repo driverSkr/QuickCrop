@@ -44,6 +44,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.ethan.quickcrop.R
 import com.ethan.quickcrop.ui.media.MediaAlbum
+import com.ethan.quickcrop.ui.media.MediaPickType
 import com.ethan.quickcrop.ui.media.MediaPhoto
 import com.ethan.quickcrop.ui.media.view.AlbumList
 import com.ethan.quickcrop.ui.media.view.EmptyPhotoState
@@ -92,8 +93,10 @@ private data class ImportImageFormat(
 
 @Composable
 fun MediaPickPage(
+    pickType: MediaPickType = MediaPickType.IMAGE,
     onClose: () -> Unit,
-    onImportReady: (String) -> Unit,
+    onImageImportReady: (String) -> Unit,
+    onVideoPickReady: (Uri) -> Unit = {},
     permissionRequestedBeforeOpen: Boolean = false
 ) {
     val context = LocalContext.current
@@ -113,7 +116,7 @@ fun MediaPickPage(
     fun refreshMedia() {
         scope.launch {
             isLoadingPhotos = true
-            val media = withContext(Dispatchers.IO) { loadMediaPhotos(context) }
+            val media = withContext(Dispatchers.IO) { loadMediaItems(context, pickType) }
             photos = media
             albums = buildMediaAlbums(context, media)
             if (selectedAlbumId != RECENT_ALBUM_ID && albums.none { it.id == selectedAlbumId }) {
@@ -126,7 +129,7 @@ fun MediaPickPage(
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { grantMap ->
-        val granted = grantMap.values.any { it } || hasMediaPhotoPermission(context)
+        val granted = grantMap.values.any { it } || hasMediaPermission(context, pickType)
         if (granted) {
             permissionState = PhotoPermissionState.Granted
             refreshMedia()
@@ -137,13 +140,13 @@ fun MediaPickPage(
     }
 
     fun requestPermissionIfNeeded() {
-        if (hasMediaPhotoPermission(context)) {
+        if (hasMediaPermission(context, pickType)) {
             permissionState = PhotoPermissionState.Granted
             refreshMedia()
         } else {
             permissionState = PhotoPermissionState.Checking
             isLoadingPhotos = true
-            permissionLauncher.launch(requiredMediaPhotoPermissions())
+            permissionLauncher.launch(requiredMediaPermissions(pickType))
         }
     }
 
@@ -172,7 +175,7 @@ fun MediaPickPage(
             when (result) {
                 is ImportResult.Success -> {
                     // 校验和本地缓存准备成功后，再交给后续裁剪流程处理。
-                    onImportReady(result.value.path)
+                    onImageImportReady(result.value.path)
                 }
                 is ImportResult.Failure -> {
                     Toast.makeText(context, result.value.messageRes, Toast.LENGTH_SHORT).show()
@@ -181,9 +184,9 @@ fun MediaPickPage(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(pickType) {
         if (permissionRequestedBeforeOpen) {
-            if (hasMediaPhotoPermission(context)) {
+            if (hasMediaPermission(context, pickType)) {
                 permissionState = PhotoPermissionState.Granted
                 refreshMedia()
             } else {
@@ -195,12 +198,12 @@ fun MediaPickPage(
         }
     }
 
-    DisposableEffect(lifecycleOwner, permissionState) {
+    DisposableEffect(lifecycleOwner, permissionState, pickType) {
         val observer = LifecycleEventObserver { _, event ->
             // 从系统设置返回时重新检查权限，用户打开照片权限后立即刷新相册内容。
             if (event == Lifecycle.Event.ON_RESUME &&
                 permissionState == PhotoPermissionState.Denied &&
-                hasMediaPhotoPermission(context)
+                hasMediaPermission(context, pickType)
             ) {
                 permissionState = PhotoPermissionState.Granted
                 refreshMedia()
@@ -222,7 +225,7 @@ fun MediaPickPage(
     }
     fun handleMediaClick(photo: MediaPhoto) {
         if (photo.isVideo) {
-            Toast.makeText(context, "功能待完善", Toast.LENGTH_SHORT).show()
+            onVideoPickReady(photo.uri)
             return
         }
         importPhoto(photo)
@@ -300,24 +303,35 @@ fun MediaPickPage(
     }
 }
 
-// 根据 Android 版本返回照片读取权限，Android 14 额外支持“选择的照片”有限授权。
-internal fun requiredMediaPhotoPermissions(): Array<String> {
-    return when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> arrayOf(
-            Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VIDEO,
-            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
-        )
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> arrayOf(
+// 根据入口类型返回媒体读取权限，保留 ALL 模式以支持图片和视频混合展示。
+internal fun requiredMediaPermissions(pickType: MediaPickType): Array<String> {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        return arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+
+    val mediaPermissions = when (pickType) {
+        MediaPickType.IMAGE -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+        MediaPickType.VIDEO -> arrayOf(Manifest.permission.READ_MEDIA_VIDEO)
+        MediaPickType.ALL -> arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
             Manifest.permission.READ_MEDIA_VIDEO
         )
-        else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        mediaPermissions + Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+    } else {
+        mediaPermissions
     }
 }
 
-// 判断是否已经拥有全量图片/视频权限或 Android 14 的有限照片访问权限。
-internal fun hasMediaPhotoPermission(context: Context): Boolean {
+// 兼容旧调用点：默认请求图片权限。
+internal fun requiredMediaPhotoPermissions(): Array<String> {
+    return requiredMediaPermissions(MediaPickType.IMAGE)
+}
+
+// 判断是否已经拥有当前入口需要的媒体权限或 Android 14 的有限访问权限。
+internal fun hasMediaPermission(context: Context, pickType: MediaPickType): Boolean {
     val imagePermissionGranted = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
             ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
@@ -336,13 +350,30 @@ internal fun hasMediaPhotoPermission(context: Context): Boolean {
     }
     val limitedPhotoGranted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
-    return imagePermissionGranted || videoPermissionGranted || limitedPhotoGranted
+    return when (pickType) {
+        MediaPickType.IMAGE -> imagePermissionGranted || limitedPhotoGranted
+        MediaPickType.VIDEO -> videoPermissionGranted || limitedPhotoGranted
+        MediaPickType.ALL -> imagePermissionGranted || videoPermissionGranted || limitedPhotoGranted
+    }
 }
 
-// 从 MediaStore 读取系统图片和视频，并按添加时间倒序生成网格数据源。
+// 兼容旧调用点：默认按图片入口判断权限。
+internal fun hasMediaPhotoPermission(context: Context): Boolean {
+    return hasMediaPermission(context, MediaPickType.IMAGE)
+}
+
+// 从 MediaStore 按入口类型读取媒体，并按添加时间倒序生成网格数据源。
+private fun loadMediaItems(context: Context, pickType: MediaPickType): List<MediaPhoto> {
+    return when (pickType) {
+        MediaPickType.IMAGE -> loadImageItems(context)
+        MediaPickType.VIDEO -> loadVideoItems(context)
+        MediaPickType.ALL -> loadImageItems(context) + loadVideoItems(context)
+    }.sortedByDescending { it.dateAdded }
+}
+
+// 兼容旧调用点：默认读取图片和视频混合列表。
 private fun loadMediaPhotos(context: Context): List<MediaPhoto> {
-    return (loadImageItems(context) + loadVideoItems(context))
-        .sortedByDescending { it.dateAdded }
+    return loadMediaItems(context, MediaPickType.ALL)
 }
 
 private fun loadImageItems(context: Context): List<MediaPhoto> {

@@ -2,6 +2,7 @@ package com.ethan.quickcrop.ui.audio
 
 import android.os.Bundle
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,10 +20,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.base.BaseActivity
+import com.ethan.quickcrop.R
 import com.ethan.quickcrop.ui.theme.QuickCropTheme
 
 class AudioEditorActivity : BaseActivity() {
@@ -45,11 +49,11 @@ private fun AudioPlaceholderPage(onBack: () -> Unit) {
             .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
         Box(modifier = Modifier.fillMaxWidth().height(48.dp)) {
-            Text(
-                text = "<",
-                color = Color(0xFF9CA3AF),
-                fontSize = 24.sp,
-                modifier = Modifier.align(Alignment.CenterStart).clickable { onBack() }
+            Image(
+                painter = painterResource(R.drawable.fa_arrow_left),
+                contentDescription = null,
+                modifier = Modifier.align(Alignment.CenterStart).clickable { onBack() },
+                colorFilter = ColorFilter.tint(Color(0xFF9CA3AF))
             )
             Text(
                 text = "音频编辑",

@@ -2,6 +2,18 @@ package com.ethan.quickcrop.ui.media
 
 import android.net.Uri
 
+enum class MediaPickType {
+    IMAGE,
+    VIDEO,
+    ALL;
+
+    companion object {
+        fun fromValue(value: String?): MediaPickType {
+            return values().firstOrNull { it.name == value } ?: IMAGE
+        }
+    }
+}
+
 internal data class MediaPhoto(
     val id: Long,
     val uri: Uri,

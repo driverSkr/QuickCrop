@@ -13,17 +13,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.ethan.base.BaseActivity
 import com.ethan.quickcrop.ui.crop.image.CropImageActivity
+import com.ethan.quickcrop.ui.crop.video.CropVideoActivity
 import com.ethan.quickcrop.ui.media.page.MediaPickPage
 import com.ethan.quickcrop.ui.theme.QuickCropTheme
 import java.io.File
 
 /**
- * QuickCrop 自定义相册入口，只保留选图和跳转裁剪页这条核心链路。
+ * QuickCrop 自定义相册入口，按上游传入的媒体类型展示图片、视频或混合媒体。
  */
 class MediaPickActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val pickType = MediaPickType.fromValue(getStringExtra(EXTRA_PICK_TYPE))
         setContent {
             QuickCropTheme {
                 Surface(
@@ -31,8 +33,10 @@ class MediaPickActivity : BaseActivity() {
                     color = Color(0xFF0C0C0F)
                 ) {
                     MediaPickPage(
+                        pickType = pickType,
                         onClose = { finish() },
-                        onImportReady = { importPath -> openCropImagePage(importPath) }
+                        onImageImportReady = { importPath -> openCropImagePage(importPath) },
+                        onVideoPickReady = { videoUri -> openCropVideoPage(videoUri) }
                     )
                 }
             }
@@ -52,11 +56,25 @@ class MediaPickActivity : BaseActivity() {
         }
     }
 
+    private fun openCropVideoPage(videoUri: Uri) {
+        // 视频模块当前只实现 UI 入口，后续接入剪辑链路时可在这里传递视频 Uri 或缓存路径。
+        val started = startActivitySafely(
+            Intent(this, CropVideoActivity::class.java).apply {
+                putExtra(CropVideoActivity.EXTRA_VIDEO_URI, videoUri.toString())
+            }
+        )
+        if (started) {
+            finish()
+        }
+    }
+
     companion object {
         private const val TAG = "MediaPickActivity"
+        private const val EXTRA_PICK_TYPE = "extra_pick_type"
 
-        fun launch(context: Context) {
+        fun launch(context: Context, pickType: MediaPickType = MediaPickType.IMAGE) {
             val intent = Intent(context, MediaPickActivity::class.java).apply {
+                putExtra(EXTRA_PICK_TYPE, pickType.name)
                 if (context !is Activity) {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }

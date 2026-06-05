@@ -222,6 +222,13 @@ fun CropResultPreviewPage(imageUri: Uri?) {
                     onExport = { exportImage() }
                 )
                 ImageEditorStep.Success -> ExportSuccessPanel(
+                    exportedUri = exportedUri,
+                    fallbackBitmap = bitmap,
+                    rotationDegrees = rotationDegrees,
+                    flipHorizontal = flipHorizontal,
+                    flipVertical = flipVertical,
+                    selectedFilter = selectedFilter,
+                    adjustments = adjustments,
                     onBackHome = {
                         context.startActivity(
                             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -343,14 +350,14 @@ private fun RotateEditorContent(
         }
         Spacer(modifier = Modifier.height(16.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-            RoundToolButton(symbol = "↺", label = "左旋 90°", onClick = onRotateLeft)
-            RoundToolButton(symbol = "↻", label = "右旋 90°", onClick = onRotateRight)
-            RoundToolButton(symbol = "180", label = "旋转 180°", onClick = onRotateHalf)
+            RoundToolButton(iconRes = R.drawable.fa_rotate_left, label = "左旋 90°", onClick = onRotateLeft)
+            RoundToolButton(iconRes = R.drawable.fa_rotate_right, label = "右旋 90°", onClick = onRotateRight)
+            RoundToolButton(iconRes = R.drawable.fa_refresh, label = "旋转 180°", onClick = onRotateHalf)
         }
         Spacer(modifier = Modifier.height(12.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-            RoundToolButton(symbol = "⇄", label = "水平翻转", selected = flipHorizontal, onClick = onFlipHorizontal)
-            RoundToolButton(symbol = "⇅", label = "垂直翻转", selected = flipVertical, onClick = onFlipVertical)
+            RoundToolButton(iconRes = R.drawable.fa_arrows_left_right, label = "水平翻转", selected = flipHorizontal, onClick = onFlipHorizontal)
+            RoundToolButton(iconRes = R.drawable.fa_arrows_up_down, label = "垂直翻转", selected = flipVertical, onClick = onFlipVertical)
         }
         Spacer(modifier = Modifier.height(14.dp))
         PrimaryBottomButton(text = "下一步：滤镜 →", onClick = onNext)
@@ -422,19 +429,19 @@ private fun AdjustEditorContent(
             modifier = Modifier.fillMaxWidth().height(208.dp)
         )
         Spacer(modifier = Modifier.height(14.dp))
-        AdjustmentSlider("☀ 亮度", adjustments.brightness) {
+        AdjustmentSlider(R.drawable.fa_sun, "亮度", adjustments.brightness) {
             onAdjustmentsChanged(adjustments.copy(brightness = it))
         }
-        AdjustmentSlider("◐ 对比度", adjustments.contrast) {
+        AdjustmentSlider(R.drawable.fa_adjust, "对比度", adjustments.contrast) {
             onAdjustmentsChanged(adjustments.copy(contrast = it))
         }
-        AdjustmentSlider("◌ 饱和度", adjustments.saturation) {
+        AdjustmentSlider(R.drawable.fa_palette, "饱和度", adjustments.saturation) {
             onAdjustmentsChanged(adjustments.copy(saturation = it))
         }
-        AdjustmentSlider("♨ 色温", adjustments.temperature) {
+        AdjustmentSlider(R.drawable.fa_temperature_half, "色温", adjustments.temperature) {
             onAdjustmentsChanged(adjustments.copy(temperature = it))
         }
-        AdjustmentSlider("✦ 清晰度", adjustments.clarity) {
+        AdjustmentSlider(R.drawable.fa_bolt, "清晰度", adjustments.clarity) {
             onAdjustmentsChanged(adjustments.copy(clarity = it))
         }
         Spacer(modifier = Modifier.height(10.dp))
@@ -477,7 +484,7 @@ private fun PreviewPanel(
 
 @Composable
 private fun RoundToolButton(
-    symbol: String,
+    iconRes: Int,
     label: String,
     selected: Boolean = false,
     onClick: () -> Unit
@@ -493,7 +500,7 @@ private fun RoundToolButton(
                 .background(if (selected) Color(0xFF7C3AED) else Color(0xFF1F2937)),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = symbol, color = Color(0xFFD1D5DB), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            FaIcon(iconRes = iconRes, tint = Color(0xFFD1D5DB), modifier = Modifier.size(20.dp))
         }
         Text(text = label, color = Color(0xFF9CA3AF), fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
     }
@@ -536,10 +543,13 @@ private fun FilterCard(bitmap: Bitmap?, option: ImageFilterOption, selected: Boo
 }
 
 @Composable
-private fun AdjustmentSlider(title: String, value: Int, onValueChange: (Int) -> Unit) {
+private fun AdjustmentSlider(iconRes: Int, title: String, value: Int, onValueChange: (Int) -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(text = title, color = Color(0xFFE5E7EB), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FaIcon(iconRes = iconRes, tint = adjustmentIconColor(iconRes), modifier = Modifier.size(15.dp))
+                Text(text = title, color = Color(0xFFE5E7EB), fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 8.dp))
+            }
             Text(text = if (value > 0) "+$value" else value.toString(), color = Color(0xFF9CA3AF), fontSize = 12.sp)
         }
         Slider(
@@ -548,6 +558,26 @@ private fun AdjustmentSlider(title: String, value: Int, onValueChange: (Int) -> 
             valueRange = -50f..50f,
             modifier = Modifier.height(32.dp)
         )
+    }
+}
+
+@Composable
+private fun FaIcon(iconRes: Int, tint: Color, modifier: Modifier = Modifier) {
+    Image(
+        painter = painterResource(iconRes),
+        contentDescription = null,
+        modifier = modifier,
+        colorFilter = ColorFilter.tint(tint)
+    )
+}
+
+private fun adjustmentIconColor(iconRes: Int): Color {
+    return when (iconRes) {
+        R.drawable.fa_sun -> Color(0xFFFACC15)
+        R.drawable.fa_palette -> Color(0xFFF472B6)
+        R.drawable.fa_temperature_half -> Color(0xFFFB923C)
+        R.drawable.fa_bolt -> Color(0xFF60A5FA)
+        else -> Color(0xFFD1D5DB)
     }
 }
 
@@ -568,18 +598,67 @@ private fun PrimaryBottomButton(text: String, onClick: () -> Unit) {
 
 @Composable
 private fun ExportSuccessPanel(
+    exportedUri: Uri?,
+    fallbackBitmap: Bitmap?,
+    rotationDegrees: Int,
+    flipHorizontal: Boolean,
+    flipVertical: Boolean,
+    selectedFilter: ImageFilterOption,
+    adjustments: ImageAdjustments,
     onBackHome: () -> Unit,
     onContinueEdit: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    // 成功页优先展示真正写入相册的结果图；读取失败时回退到当前编辑预览，避免成功页空白。
+    val exportedBitmap by produceState<Bitmap?>(initialValue = null, exportedUri) {
+        value = exportedUri?.let { uri ->
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    ImagePreviewDecoder.decode(context = context.applicationContext, uri = uri)
+                }.onFailure { throwable ->
+                    Log.e(TAG, "读取导出结果失败: $uri", throwable)
+                }.getOrNull()
+            }
+        }
+    }
+
     Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = "✓", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(260.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color(0xFF18181B)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (exportedBitmap != null) {
+                Image(
+                    bitmap = exportedBitmap!!.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().padding(12.dp).clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Fit
+                )
+            } else {
+                PreviewPanel(
+                    bitmap = fallbackBitmap,
+                    rotationDegrees = rotationDegrees,
+                    flipHorizontal = flipHorizontal,
+                    flipVertical = flipVertical,
+                    selectedFilter = selectedFilter,
+                    adjustments = adjustments,
+                    modifier = Modifier.fillMaxSize().padding(12.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(22.dp))
+        FaIcon(iconRes = R.drawable.fa_check, tint = Color.White, modifier = Modifier.size(34.dp))
         Text(text = "导出成功！", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
-        Text(text = "图片已保存到相册", color = Color(0xFF9CA3AF), fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp, bottom = 34.dp))
+        Text(text = "图片已保存到相册", color = Color(0xFF9CA3AF), fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp, bottom = 26.dp))
         PrimaryBottomButton(text = "返回首页", onClick = onBackHome)
         Spacer(modifier = Modifier.height(12.dp))
         Box(
