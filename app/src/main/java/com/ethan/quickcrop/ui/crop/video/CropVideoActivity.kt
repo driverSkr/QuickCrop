@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -177,7 +178,7 @@ private fun VideoEditorPage(videoUri: Uri?) {
         )
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0C0C0F))) {
+    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0C0C0F)).statusBarsPadding()) {
         if (editorStep != VideoEditorStep.Success) {
             VideoTopBar(
                 title = editorStep.title,

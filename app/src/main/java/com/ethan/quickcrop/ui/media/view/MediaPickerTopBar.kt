@@ -30,9 +30,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.ethan.quickcrop.R
 
-/**
- * 相册选择页顶部栏：承载关闭按钮、当前相册标题和相册列表展开入口。
- */
 @Composable
 internal fun MediaPickerTopBar(
     title: String,
@@ -44,36 +41,44 @@ internal fun MediaPickerTopBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            // 顶部栏使用不透明背景并提升绘制层级，避免下拉网格边界时底部内容透出造成闪烁。
             .zIndex(1f)
             .background(Color(0xFF0C0C0F))
             .statusBarsPadding()
-            .height(56.dp)
-            .padding(horizontal = 12.dp)
     ) {
-        Image(
-            painter = painterResource(R.drawable.svg_icon_back),
-            contentDescription = null,
-            modifier = Modifier.align(Alignment.CenterStart).size(32.dp).clickable { onClose() }
-        )
-        Row(
+        // Keep the background under the status bar while only offsetting the toolbar content.
+        Box(
             modifier = Modifier
-                .align(Alignment.Center)
-                .clip(RoundedCornerShape(20.dp))
-                .clickable(enabled = showAlbumEntrance) { onTitleClick() }
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxWidth()
+                .height(56.dp)
+                .padding(horizontal = 12.dp)
         ) {
-            Text(
-                text = title,
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.W700,
-                maxLines = 1
+            Image(
+                painter = painterResource(R.drawable.svg_icon_back),
+                contentDescription = null,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .size(32.dp)
+                    .clickable { onClose() }
             )
-            if (showAlbumEntrance) {
-                Spacer(modifier = Modifier.width(6.dp))
-                AlbumArrow(expanded = expanded)
+            Row(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable(enabled = showAlbumEntrance) { onTitleClick() }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.W700,
+                    maxLines = 1
+                )
+                if (showAlbumEntrance) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    AlbumArrow(expanded = expanded)
+                }
             }
         }
     }

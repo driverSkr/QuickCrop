@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
@@ -140,7 +141,7 @@ fun CropResultPreviewPage(imageUri: Uri?) {
         goBack()
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0C0C0F))) {
+    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0C0C0F)).statusBarsPadding()) {
         ImageEditorTopBar(
             title = editorStep.title,
             actionText = when {

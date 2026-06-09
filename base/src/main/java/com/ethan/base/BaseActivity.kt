@@ -229,10 +229,11 @@ abstract class BaseActivity : AppCompatActivity {
     }
 
     private fun applyDefaultSystemBars() {
-        // App 默认使用黑色页面背景，因此系统栏也默认设为黑色，并自动使用浅色图标。
+        // App 默认使用 edge-to-edge，状态栏透明以便页面背景延伸到系统栏区域。
         configureSystemBars(
-            edgeToEdge = false,
-            statusBarColor = Color.BLACK,
+            edgeToEdge = true,
+            lightStatusBar = false,
+            statusBarColor = Color.TRANSPARENT,
             navigationBarColor = Color.BLACK
         )
     }

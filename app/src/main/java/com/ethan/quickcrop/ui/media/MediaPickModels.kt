@@ -23,7 +23,7 @@ internal data class MediaPhoto(
     val height: Int,
     val bucketId: String,
     val bucketName: String,
-    val dateAdded: Long,
+    val sortDate: Long,
     val durationMs: Long = 0L,
     val isVideo: Boolean = false
 )
@@ -34,5 +34,5 @@ internal data class MediaAlbum(
     val count: Int,
     val coverUri: Uri,
     val coverIsVideo: Boolean,
-    val latestDateAdded: Long
+    val latestSortDate: Long
 )

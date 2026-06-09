@@ -368,7 +368,7 @@ private fun loadMediaItems(context: Context, pickType: MediaPickType): List<Medi
         MediaPickType.IMAGE -> loadImageItems(context)
         MediaPickType.VIDEO -> loadVideoItems(context)
         MediaPickType.ALL -> loadImageItems(context) + loadVideoItems(context)
-    }.sortedByDescending { it.dateAdded }
+    }.sortedByDescending { it.sortDate }
 }
 
 // 兼容旧调用点：默认读取图片和视频混合列表。
@@ -386,6 +386,8 @@ private fun loadImageItems(context: Context): List<MediaPhoto> {
         MediaStore.Images.Media.HEIGHT,
         MediaStore.Images.Media.BUCKET_ID,
         MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+        MediaStore.Images.Media.DATE_TAKEN,
+        MediaStore.Images.Media.DATE_MODIFIED,
         MediaStore.Images.Media.DATE_ADDED
     )
     val selection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -393,7 +395,11 @@ private fun loadImageItems(context: Context): List<MediaPhoto> {
     } else {
         null
     }
-    val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+    val sortOrder = mediaSortOrder(
+        dateTakenColumn = MediaStore.Images.Media.DATE_TAKEN,
+        dateModifiedColumn = MediaStore.Images.Media.DATE_MODIFIED,
+        dateAddedColumn = MediaStore.Images.Media.DATE_ADDED
+    )
 
     return runCatching {
         context.contentResolver.query(collection, projection, selection, null, sortOrder)?.use { cursor ->
@@ -404,6 +410,8 @@ private fun loadImageItems(context: Context): List<MediaPhoto> {
             val heightIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
             val bucketIdIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
             val bucketNameIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+            val dateTakenIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
+            val dateModifiedIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_MODIFIED)
             val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
             buildList {
                 while (cursor.moveToNext()) {
@@ -413,6 +421,11 @@ private fun loadImageItems(context: Context): List<MediaPhoto> {
                     val bucketId = cursor.getString(bucketIdIndex).orEmpty().ifBlank { UNKNOWN_ALBUM_ID }
                     val bucketName = cursor.getString(bucketNameIndex).orEmpty()
                         .ifBlank { context.getString(R.string.media_picker_unknown_album) }
+                    val sortDate = resolveMediaSortDate(
+                        dateTakenMs = cursor.getLong(dateTakenIndex),
+                        dateModifiedSeconds = cursor.getLong(dateModifiedIndex),
+                        dateAddedSeconds = cursor.getLong(dateAddedIndex)
+                    )
                     add(
                         MediaPhoto(
                             id = id,
@@ -423,7 +436,7 @@ private fun loadImageItems(context: Context): List<MediaPhoto> {
                             height = cursor.getInt(heightIndex),
                             bucketId = bucketId,
                             bucketName = bucketName,
-                            dateAdded = cursor.getLong(dateAddedIndex),
+                            sortDate = sortDate,
                             durationMs = 0L,
                             isVideo = false
                         )
@@ -446,6 +459,8 @@ private fun loadVideoItems(context: Context): List<MediaPhoto> {
         MediaStore.Video.Media.HEIGHT,
         MediaStore.Video.Media.BUCKET_ID,
         MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
+        MediaStore.Video.Media.DATE_TAKEN,
+        MediaStore.Video.Media.DATE_MODIFIED,
         MediaStore.Video.Media.DATE_ADDED,
         MediaStore.Video.Media.DURATION
     )
@@ -454,7 +469,11 @@ private fun loadVideoItems(context: Context): List<MediaPhoto> {
     } else {
         null
     }
-    val sortOrder = "${MediaStore.Video.Media.DATE_ADDED} DESC"
+    val sortOrder = mediaSortOrder(
+        dateTakenColumn = MediaStore.Video.Media.DATE_TAKEN,
+        dateModifiedColumn = MediaStore.Video.Media.DATE_MODIFIED,
+        dateAddedColumn = MediaStore.Video.Media.DATE_ADDED
+    )
 
     return runCatching {
         context.contentResolver.query(collection, projection, selection, null, sortOrder)?.use { cursor ->
@@ -465,6 +484,8 @@ private fun loadVideoItems(context: Context): List<MediaPhoto> {
             val heightIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
             val bucketIdIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_ID)
             val bucketNameIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
+            val dateTakenIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_TAKEN)
+            val dateModifiedIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
             val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
             val durationIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
             buildList {
@@ -474,6 +495,11 @@ private fun loadVideoItems(context: Context): List<MediaPhoto> {
                     val bucketId = cursor.getString(bucketIdIndex).orEmpty().ifBlank { UNKNOWN_ALBUM_ID }
                     val bucketName = cursor.getString(bucketNameIndex).orEmpty()
                         .ifBlank { context.getString(R.string.media_picker_unknown_album) }
+                    val sortDate = resolveMediaSortDate(
+                        dateTakenMs = cursor.getLong(dateTakenIndex),
+                        dateModifiedSeconds = cursor.getLong(dateModifiedIndex),
+                        dateAddedSeconds = cursor.getLong(dateAddedIndex)
+                    )
                     add(
                         MediaPhoto(
                             id = id,
@@ -484,7 +510,7 @@ private fun loadVideoItems(context: Context): List<MediaPhoto> {
                             height = cursor.getInt(heightIndex),
                             bucketId = bucketId,
                             bucketName = bucketName,
-                            dateAdded = cursor.getLong(dateAddedIndex),
+                            sortDate = sortDate,
                             durationMs = cursor.getLong(durationIndex),
                             isVideo = true
                         )
@@ -497,7 +523,23 @@ private fun loadVideoItems(context: Context): List<MediaPhoto> {
     }.getOrDefault(emptyList())
 }
 
-// 基于图片列表构建相册入口，第一项固定为最近项目，其余按相册最新图片时间倒序。
+// 基于媒体列表构建相册入口，第一项固定为最近项目，其余按相册最新媒体时间倒序。
+private fun mediaSortOrder(dateTakenColumn: String, dateModifiedColumn: String, dateAddedColumn: String): String {
+    return "$dateTakenColumn DESC, $dateModifiedColumn DESC, $dateAddedColumn DESC"
+}
+
+private fun resolveMediaSortDate(
+    dateTakenMs: Long,
+    dateModifiedSeconds: Long,
+    dateAddedSeconds: Long
+): Long {
+    return when {
+        dateTakenMs > 0L -> dateTakenMs
+        dateModifiedSeconds > 0L -> dateModifiedSeconds * 1000L
+        else -> dateAddedSeconds * 1000L
+    }
+}
+
 private fun buildMediaAlbums(context: Context, photos: List<MediaPhoto>): List<MediaAlbum> {
     if (photos.isEmpty()) return emptyList()
     val recentAlbum = MediaAlbum(
@@ -506,22 +548,22 @@ private fun buildMediaAlbums(context: Context, photos: List<MediaPhoto>): List<M
         count = photos.size,
         coverUri = photos.first().uri,
         coverIsVideo = photos.first().isVideo,
-        latestDateAdded = photos.first().dateAdded
+        latestSortDate = photos.first().sortDate
     )
     val bucketAlbums = photos
         .groupBy { it.bucketId }
         .mapNotNull { (bucketId, bucketPhotos) ->
-            val cover = bucketPhotos.maxByOrNull { it.dateAdded } ?: return@mapNotNull null
+            val cover = bucketPhotos.maxByOrNull { it.sortDate } ?: return@mapNotNull null
             MediaAlbum(
                 id = bucketId,
                 name = cover.bucketName,
                 count = bucketPhotos.size,
                 coverUri = cover.uri,
                 coverIsVideo = cover.isVideo,
-                latestDateAdded = cover.dateAdded
+                latestSortDate = cover.sortDate
             )
         }
-        .sortedByDescending { it.latestDateAdded }
+        .sortedByDescending { it.latestSortDate }
     return listOf(recentAlbum) + bucketAlbums
 }
 
