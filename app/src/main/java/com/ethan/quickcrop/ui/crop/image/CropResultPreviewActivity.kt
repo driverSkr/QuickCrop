@@ -1,9 +1,10 @@
-package com.ethan.quickcrop.ui.crop.image.preview
+package com.ethan.quickcrop.ui.crop.image
 
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import com.ethan.base.BaseActivity
+import com.ethan.quickcrop.ui.crop.image.page.CropResultPreviewPage
 import com.ethan.quickcrop.ui.theme.QuickCropTheme
 
 class CropResultPreviewActivity : BaseActivity() {

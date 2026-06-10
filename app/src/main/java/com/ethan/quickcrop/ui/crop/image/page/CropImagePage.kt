@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -48,7 +49,7 @@ import com.ethan.quickcrop.core.image.ImageCropProcessor
 import com.ethan.quickcrop.core.image.ImageCropRequest
 import com.ethan.quickcrop.core.image.ImagePreviewDecoder
 import com.ethan.quickcrop.extension.finishActivity
-import com.ethan.quickcrop.ui.crop.image.preview.CropResultPreviewActivity
+import com.ethan.quickcrop.ui.crop.image.CropResultPreviewActivity
 import com.ethan.quickcrop.ui.crop.image.view.ResizableCropBox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -168,7 +169,13 @@ fun CropImagePage(sourceUri: Uri?) {
                 }
             )
         }
-        Column(modifier = Modifier.fillMaxWidth().height(120.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                // 底部操作区叠加系统导航栏安全距离，避免按钮被手势条或三键导航遮挡。
+                .navigationBarsPadding()
+                .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 16.dp)
+        ) {
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 0.dp),

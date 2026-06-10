@@ -1,4 +1,4 @@
-package com.ethan.quickcrop.ui.crop.image.preview
+package com.ethan.quickcrop.ui.crop.image.page
 
 import android.content.ContentValues
 import android.content.Context
@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.net.Uri
@@ -804,7 +805,7 @@ private fun renderEditedBitmap(
 
     val filteredBitmap = Bitmap.createBitmap(transformedBitmap.width, transformedBitmap.height, Bitmap.Config.ARGB_8888)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG).apply {
-        colorFilter = android.graphics.ColorMatrixColorFilter(colorMatrix)
+        colorFilter = ColorMatrixColorFilter(colorMatrix)
     }
     Canvas(filteredBitmap).drawBitmap(transformedBitmap, 0f, 0f, paint)
     if (transformedBitmap !== sourceBitmap) {
