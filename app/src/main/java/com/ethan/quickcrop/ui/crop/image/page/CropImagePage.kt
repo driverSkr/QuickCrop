@@ -301,7 +301,7 @@ private fun CropApplyButton(enabled: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CropActionButton(enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun CropActionButton(enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val backgroundColor = if (enabled) {
         Color.White.copy(alpha = 0.2f)
     } else {

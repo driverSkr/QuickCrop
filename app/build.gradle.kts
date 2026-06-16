@@ -60,6 +60,7 @@ dependencies {
     implementation(libs.coil)
     implementation(libs.coil3.compose)
     implementation(libs.material)
+    implementation(libs.androidx.activity)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
