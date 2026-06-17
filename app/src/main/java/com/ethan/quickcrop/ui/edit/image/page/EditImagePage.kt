@@ -1,27 +1,36 @@
 package com.ethan.quickcrop.ui.edit.image.page
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
+import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,37 +38,58 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.quickcrop.R
+import com.ethan.quickcrop.core.image.ImageEditSaveProcessor
+import com.ethan.quickcrop.core.image.ImageEditSaveRequest
 import com.ethan.quickcrop.core.image.ImagePreviewDecoder
+import com.ethan.quickcrop.custom.ArcScaleView
+import com.ethan.quickcrop.custom.ArcScaleViewState
+import com.ethan.quickcrop.custom.RotateAngleIndicator
+import com.ethan.quickcrop.custom.rememberArcScaleViewState
 import com.ethan.quickcrop.extension.finishActivity
+import com.ethan.quickcrop.ui.crop.image.CropResultPreviewActivity
 import com.ethan.quickcrop.ui.crop.image.view.ResizableCropBox
-import com.ethan.quickcrop.utils.EditImageUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
 
 private const val TAG = "EditImagePage"
+private const val DEFAULT_ROTATE_ANGLE_LIMIT = 45F
+private const val RIGHT_ANGLE_ROTATION_STEP_DEGREES = 90
+private const val FULL_ROTATION_DEGREES = 360
 
 @Composable
 fun EditImagePage(sourceUri: Uri?) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val coroutineScope = rememberCoroutineScope()
     // 裁剪页只解码屏幕预览图；真正导出时会重新读取 sourceUri，避免预览图影响输出质量。
     val bitmap by produceState<Bitmap?>(initialValue = null, sourceUri) {
         value = sourceUri?.let { uri ->
@@ -72,16 +102,98 @@ fun EditImagePage(sourceUri: Uri?) {
     var selectedAspectRatio by remember { mutableStateOf(aspectRatioList[0]) }
     // 底部工具栏当前只负责模式选择，具体滤镜/调节面板会在后续版本接入。
     var selectedTool by remember { mutableStateOf(EditImageTool.Crop) }
+    // 裁剪模式下的图片微调旋转角度，默认范围由 ArcScaleViewState 控制。
+    val rotateScaleState = rememberArcScaleViewState()
+    val rotateAngle = rotateScaleState.currentValue
+    // 图片镜像和 90 度旋转作为离散变换，和刻度尺的微调旋转叠加展示。
+    var isImageMirrored by remember { mutableStateOf(false) }
+    var rightAngleRotationDegrees by remember { mutableStateOf(0) }
+    // 当前选中的滤镜会同时作用于页面预览和最终保存结果。
+    var selectedFilter by remember { mutableStateOf(ImageFilterOption.original()) }
+    // 防止用户连续点击保存造成重复写入相册。
+    var isSaving by remember { mutableStateOf(false) }
     // 当前裁剪框在 Compose 画布坐标系中的位置，导出时会映射回原图像素坐标。
     var currentCropRect by remember { mutableStateOf(Rect.Zero) }
+    // 只有用户主动拖动裁剪框后才认为裁剪区域发生编辑，初始化贴图不点亮保存按钮。
+    var hasCropUserChanged by remember { mutableStateOf(false) }
     var imageContainerSize by remember { mutableStateOf(IntSize.Zero) }
-    val imageBounds = remember(bitmap, imageContainerSize) {
-        // Image 使用 ContentScale.Fit 显示，真实图片区域通常小于容器；裁剪框必须限制在这块区域内。
-        EditImageUtils.calculateFitImageBounds(bitmap = bitmap, containerSize = imageContainerSize)
+    val previewLayout = remember(bitmap, imageContainerSize, rightAngleRotationDegrees) {
+        // 预览区域根据 90 度旋转后的视觉宽高比重新计算，避免高度被压缩时图片变形或裁剪框错位。
+        calculateAdaptiveImagePreviewLayout(
+            bitmap = bitmap,
+            containerSize = imageContainerSize,
+            rightAngleRotationDegrees = rightAngleRotationDegrees
+        )
     }
-    val cropAspectRatio = remember(selectedAspectRatio, bitmap) {
+    val imageBounds = previewLayout.cropBounds
+    val imageLayerBounds = previewLayout.imageLayerBounds
+    val isCropToolSelected = selectedTool == EditImageTool.Crop
+    val imageCoverScale = remember(imageBounds, imageLayerBounds, rightAngleRotationDegrees, rotateAngle) {
+        // 任意角度旋转时自动放大图片，保证裁剪框内不会露出透明边角。
+        calculateRotationCoverScale(
+            cropBounds = imageBounds,
+            imageLayerBounds = imageLayerBounds,
+            rotationDegrees = rightAngleRotationDegrees.toFloat() + rotateAngle
+        )
+    }
+    val cropAspectRatio = remember(selectedAspectRatio, bitmap, rightAngleRotationDegrees) {
         // 把底部比例文案转换成裁剪框需要的宽高比，null 表示自由比例。
-        selectedAspectRatio.toCropAspectRatio(bitmap)
+        selectedAspectRatio.toCropAspectRatio(bitmap, rightAngleRotationDegrees)
+    }
+    val hasEditOperation = hasCropUserChanged ||
+        abs(rotateAngle) > 0.01F ||
+        isImageMirrored ||
+        rightAngleRotationDegrees != 0 ||
+        selectedAspectRatio != aspectRatioList[0] ||
+        !selectedFilter.isOriginal
+    val canSave = hasEditOperation &&
+        !isSaving &&
+        sourceUri != null &&
+        !currentCropRect.isEmpty &&
+        !imageBounds.isEmpty &&
+        !imageLayerBounds.isEmpty
+
+    fun handleSaveClick() {
+        val safeSourceUri = sourceUri
+        if (safeSourceUri == null) {
+            Toast.makeText(context, "图片来源为空，无法保存", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (currentCropRect.isEmpty || imageBounds.isEmpty || imageLayerBounds.isEmpty) {
+            Log.w(TAG, "保存失败，图片或裁剪区域尚未准备完成: cropRect=$currentCropRect, imageBounds=$imageBounds, imageLayerBounds=$imageLayerBounds")
+            Toast.makeText(context, "图片尚未准备完成，请稍后重试", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val request = ImageEditSaveRequest(
+            sourceUri = safeSourceUri,
+            cropRect = currentCropRect,
+            visualImageBounds = imageBounds,
+            imageLayerBounds = imageLayerBounds,
+            rightAngleRotationDegrees = rightAngleRotationDegrees,
+            rotationDegrees = rightAngleRotationDegrees.toFloat() + rotateAngle,
+            coverScale = imageCoverScale,
+            mirrorHorizontal = isImageMirrored,
+            filterColorMatrix = selectedFilter.androidMatrix
+        )
+        isSaving = true
+        coroutineScope.launch {
+            Log.d(TAG, "开始保存图片编辑结果: $request")
+            val result = withContext(Dispatchers.IO) {
+                ImageEditSaveProcessor.saveToGallery(context.applicationContext, request)
+            }
+            isSaving = false
+            result.onSuccess { outputUri ->
+                Log.d(TAG, "图片编辑结果保存成功，跳转预览页: $outputUri")
+                context.startActivity(
+                    Intent(context, CropResultPreviewActivity::class.java).apply {
+                        putExtra(CropResultPreviewActivity.EXTRA_IMAGE_URI, outputUri.toString())
+                    }
+                )
+            }.onFailure { throwable ->
+                Log.e(TAG, "图片编辑结果保存失败", throwable)
+                Toast.makeText(context, "保存失败，请稍后重试", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
@@ -89,22 +201,48 @@ fun EditImagePage(sourceUri: Uri?) {
             Image(painter = painterResource(R.drawable.svg_icon_back), contentDescription = null, modifier = Modifier.align(Alignment.CenterStart).clickable{
                 context.finishActivity()
             })
+            EditImageSaveButton(
+                enabled = canSave,
+                modifier = Modifier.align(Alignment.CenterEnd),
+                onClick = { handleSaveClick() }
+            )
         }
+        Spacer(modifier = Modifier.height(24.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 16.dp)
                 .weight(1f)
+                // 图片旋转后可能超出预览区域，这里裁掉溢出，避免遮挡底部控制区。
+                .clipToBounds()
                 .onSizeChanged {
                     imageContainerSize = it
                 },
             contentAlignment = Alignment.Center
         ) {
-            if (bitmap != null) {
+            if (bitmap != null && !imageLayerBounds.isEmpty) {
+                val imageLayerWidth = with(density) { imageLayerBounds.width.toDp() }
+                val imageLayerHeight = with(density) { imageLayerBounds.height.toDp() }
                 Image(
                     bitmap = bitmap!!.asImageBitmap(),
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset {
+                            IntOffset(
+                                x = imageLayerBounds.left.roundToInt(),
+                                y = imageLayerBounds.top.roundToInt()
+                            )
+                        }
+                        .size(width = imageLayerWidth, height = imageLayerHeight)
+                        .graphicsLayer {
+                            // 预览图合并镜像、90 度旋转和刻度尺微调，裁剪框保持在屏幕坐标系中便于继续拖拽。
+                            scaleX = if (isImageMirrored) -imageCoverScale else imageCoverScale
+                            scaleY = imageCoverScale
+                            rotationZ = rightAngleRotationDegrees.toFloat() + rotateAngle
+                        },
+                    contentScale = ContentScale.Fit,
+                    colorFilter = selectedFilter.composeMatrix?.let { ColorFilter.colorMatrix(it) }
                 )
             } else {
                 Text(text = "图片加载中...")
@@ -114,14 +252,78 @@ fun EditImagePage(sourceUri: Uri?) {
                 modifier = Modifier.fillMaxSize(),
                 cropBounds = imageBounds,
                 aspectRatio = cropAspectRatio,
+                // 编辑页初始裁剪框需要正好包裹图片，比例切换时再按目标比例取图片内最大区域。
+                initialCropScale = 1f,
+                // 切到滤镜/调节时只隐藏裁剪框，不移除组件，避免丢失用户之前调整过的 cropRect。
+                visible = isCropToolSelected,
+                enabled = isCropToolSelected,
                 onCropRectChanged = { cropRect ->
                     // 记录当前裁剪框，后续导出图片时需要用它换算原图坐标。
                     currentCropRect = cropRect
                 },
                 onCropRectUserChanged = { cropRect ->
+                    hasCropUserChanged = true
                     Log.d(TAG, "用户调整裁剪框: $cropRect")
                 }
             )
+        }
+
+        AnimatedContent(
+            targetState = selectedTool,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp)
+        ) {
+            when (it) {
+                EditImageTool.Crop -> {
+                    CropRotatePanel(
+                        rotateAngle = rotateAngle,
+                        rotateScaleState = rotateScaleState,
+                        enabled = bitmap != null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp),
+                        onMirrorClick = {
+                            if (bitmap == null) {
+                                Log.w(TAG, "图片未加载完成，忽略镜像操作")
+                            } else {
+                                isImageMirrored = !isImageMirrored
+                                Log.d(TAG, "切换图片镜像: isImageMirrored=$isImageMirrored")
+                            }
+                        },
+                        onRotateRightAngleClick = {
+                            if (bitmap == null) {
+                                Log.w(TAG, "图片未加载完成，忽略 90 度旋转操作")
+                            } else {
+                                rightAngleRotationDegrees = (rightAngleRotationDegrees + RIGHT_ANGLE_ROTATION_STEP_DEGREES) % FULL_ROTATION_DEGREES
+                                Log.d(TAG, "图片旋转 90 度: rightAngleRotationDegrees=$rightAngleRotationDegrees")
+                            }
+                        }
+                    )
+                }
+
+                EditImageTool.Filter -> {
+                    FilterEditorContent(
+                        bitmap = bitmap,
+                        selectedFilter = selectedFilter,
+                        onFilterClick = { filter ->
+                            selectedFilter = filter
+                            Log.d(TAG, "切换滤镜: ${filter.name}")
+                        }
+                    )
+                }
+
+                EditImageTool.Adjust -> {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "调节",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
 
         EditImageBottomToolbar(
@@ -144,6 +346,128 @@ private enum class EditImageTool(
     Crop(label = "裁剪", iconRes = R.drawable.fa_crop),
     Filter(label = "滤镜", iconRes = R.drawable.fa_palette),
     Adjust(label = "调节", iconRes = R.drawable.fa_adjust)
+}
+
+@Composable
+private fun EditImageSaveButton(
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val backgroundColor = if (enabled) Color.White else Color(0xFF3A3A3A)
+    val textColor = if (enabled) Color.Black else Color(0xFF8E8E8E)
+
+    Text(
+        text = "保存",
+        color = textColor,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = modifier
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                color = backgroundColor,
+                shape = RoundedCornerShape(24.dp)
+            )
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick
+            )
+            // 固定水平和垂直内边距，让启用态白底胶囊按钮更稳定。
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+    )
+}
+
+@Composable
+private fun CropRotatePanel(
+    rotateAngle: Float,
+    rotateScaleState: ArcScaleViewState,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onMirrorClick: () -> Unit,
+    onRotateRightAngleClick: () -> Unit
+) {
+    val displayAngle = rotateAngle.roundToInt()
+    val progressFraction = (abs(rotateAngle) / DEFAULT_ROTATE_ANGLE_LIMIT).coerceIn(0F, 1F)
+
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+
+        Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Image(
+                painter = painterResource(R.drawable.svg_switch),
+                contentDescription = "镜像图片",
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable(
+                        enabled = enabled,
+                        role = Role.Button,
+                        onClick = onMirrorClick
+                    )
+            )
+            Spacer(modifier = Modifier.width(24.dp))
+            RotateAngleIndicator(
+                angle = displayAngle,
+                progressFraction = progressFraction,
+                isNegative = rotateAngle < 0F,
+                modifier = Modifier.padding(top = 10.dp, bottom = 10.dp),
+                // 拖动刻度时保持数字和圆环即时反馈，避免动画造成轻微滞后感。
+                animateProgress = false
+            )
+            Spacer(modifier = Modifier.width(24.dp))
+            Image(
+                painter = painterResource(R.drawable.svg_rotate),
+                contentDescription = "旋转 90 度",
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable(
+                        enabled = enabled,
+                        role = Role.Button,
+                        onClick = onRotateRightAngleClick
+                    )
+            )
+        }
+
+        ArcScaleView(
+            state = rotateScaleState,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+            onStartMove = {
+                Log.d(TAG, "开始调整图片旋转角度: ${rotateScaleState.currentValue}")
+            },
+            onEndMove = {
+                Log.d(TAG, "结束调整图片旋转角度: ${rotateScaleState.currentValue}")
+            }
+        )
+    }
+}
+
+@Composable
+private fun FilterEditorContent(
+    bitmap: Bitmap?,
+    selectedFilter: ImageFilterOption,
+    onFilterClick: (ImageFilterOption) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val filters = ImageFilterOption.defaults()
+            items(filters.size) { index ->
+                FilterCard(
+                    bitmap = bitmap,
+                    option = filters[index],
+                    selected = filters[index].name == selectedFilter.name,
+                    onClick = { onFilterClick(filters[index]) }
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -236,11 +560,119 @@ private fun EditImageToolButton(
     }
 }
 
-private fun String.toCropAspectRatio(bitmap: Bitmap?): Float? {
+private data class AdaptiveImagePreviewLayout(
+    val cropBounds: Rect = Rect.Zero,
+    val imageLayerBounds: Rect = Rect.Zero
+)
+
+private fun calculateAdaptiveImagePreviewLayout(
+    bitmap: Bitmap?,
+    containerSize: IntSize,
+    rightAngleRotationDegrees: Int
+): AdaptiveImagePreviewLayout {
+    if (bitmap == null || containerSize.width <= 0 || containerSize.height <= 0 || bitmap.width <= 0 || bitmap.height <= 0) {
+        return AdaptiveImagePreviewLayout()
+    }
+
+    val isSizeSwapped = isRightAngleRotationSwapped(rightAngleRotationDegrees)
+    val visualSourceWidth = if (isSizeSwapped) bitmap.height.toFloat() else bitmap.width.toFloat()
+    val visualSourceHeight = if (isSizeSwapped) bitmap.width.toFloat() else bitmap.height.toFloat()
+    val cropBounds = calculateFitBounds(
+        sourceWidth = visualSourceWidth,
+        sourceHeight = visualSourceHeight,
+        containerSize = containerSize
+    )
+    if (cropBounds.isEmpty) {
+        return AdaptiveImagePreviewLayout()
+    }
+
+    val layerWidth = if (isSizeSwapped) cropBounds.height else cropBounds.width
+    val layerHeight = if (isSizeSwapped) cropBounds.width else cropBounds.height
+    val centerX = cropBounds.left + cropBounds.width / 2F
+    val centerY = cropBounds.top + cropBounds.height / 2F
+
+    // 90/270 度旋转时，实际绘制层要使用旋转前尺寸，旋转后的视觉边界才会正好落在 cropBounds 内。
+    val imageLayerBounds = Rect(
+        left = centerX - layerWidth / 2F,
+        top = centerY - layerHeight / 2F,
+        right = centerX + layerWidth / 2F,
+        bottom = centerY + layerHeight / 2F
+    )
+    return AdaptiveImagePreviewLayout(
+        cropBounds = cropBounds,
+        imageLayerBounds = imageLayerBounds
+    )
+}
+
+private fun calculateFitBounds(
+    sourceWidth: Float,
+    sourceHeight: Float,
+    containerSize: IntSize
+): Rect {
+    if (sourceWidth <= 0F || sourceHeight <= 0F || containerSize.width <= 0 || containerSize.height <= 0) {
+        return Rect.Zero
+    }
+
+    val containerWidth = containerSize.width.toFloat()
+    val containerHeight = containerSize.height.toFloat()
+    val sourceRatio = sourceWidth / sourceHeight
+    val containerRatio = containerWidth / containerHeight
+    val displayWidth: Float
+    val displayHeight: Float
+    if (containerRatio > sourceRatio) {
+        // 高度受限时优先按高度缩放，确保预览图和裁剪框都保持原始宽高比。
+        displayHeight = containerHeight
+        displayWidth = displayHeight * sourceRatio
+    } else {
+        // 宽度受限时按宽度缩放，避免图片横向溢出预览区域。
+        displayWidth = containerWidth
+        displayHeight = displayWidth / sourceRatio
+    }
+
+    val left = (containerWidth - displayWidth) / 2F
+    val top = (containerHeight - displayHeight) / 2F
+    return Rect(
+        left = left,
+        top = top,
+        right = left + displayWidth,
+        bottom = top + displayHeight
+    )
+}
+
+private fun isRightAngleRotationSwapped(rotationDegrees: Int): Boolean {
+    val normalizedDegrees = ((rotationDegrees % FULL_ROTATION_DEGREES) + FULL_ROTATION_DEGREES) % FULL_ROTATION_DEGREES
+    return normalizedDegrees == RIGHT_ANGLE_ROTATION_STEP_DEGREES ||
+        normalizedDegrees == FULL_ROTATION_DEGREES - RIGHT_ANGLE_ROTATION_STEP_DEGREES
+}
+
+private fun calculateRotationCoverScale(
+    cropBounds: Rect,
+    imageLayerBounds: Rect,
+    rotationDegrees: Float
+): Float {
+    if (cropBounds.isEmpty || imageLayerBounds.isEmpty || imageLayerBounds.width <= 0F || imageLayerBounds.height <= 0F) {
+        Log.w(TAG, "计算旋转覆盖缩放失败，尺寸无效: cropBounds=$cropBounds, imageLayerBounds=$imageLayerBounds")
+        return 1F
+    }
+
+    val radians = Math.toRadians(rotationDegrees.toDouble())
+    val cosValue = abs(cos(radians)).toFloat()
+    val sinValue = abs(sin(radians)).toFloat()
+    val scaleForRotatedWidth = (cropBounds.width * cosValue + cropBounds.height * sinValue) / imageLayerBounds.width
+    val scaleForRotatedHeight = (cropBounds.width * sinValue + cropBounds.height * cosValue) / imageLayerBounds.height
+
+    // 同时满足旋转后横向和纵向包住裁剪框，避免裁剪框四角出现空白。
+    return maxOf(scaleForRotatedWidth, scaleForRotatedHeight, 1F)
+}
+
+private fun String.toCropAspectRatio(bitmap: Bitmap?, rightAngleRotationDegrees: Int): Float? {
     return when (this) {
         "原始" -> bitmap?.let { image ->
-            if (image.height > 0) {
-                image.width.toFloat() / image.height.toFloat()
+            val isSizeSwapped = isRightAngleRotationSwapped(rightAngleRotationDegrees)
+            val sourceWidth = if (isSizeSwapped) image.height else image.width
+            val sourceHeight = if (isSizeSwapped) image.width else image.height
+            if (sourceHeight > 0) {
+                sourceWidth.toFloat() / sourceHeight.toFloat()
             } else {
                 null
             }
@@ -255,5 +687,88 @@ private fun String.toCropAspectRatio(bitmap: Bitmap?): Float? {
                 null
             }
         }
+    }
+}
+
+private data class ImageFilterOption(
+    val name: String,
+    val shortName: String,
+    val composeMatrix: ColorMatrix?,
+    val androidMatrix: android.graphics.ColorMatrix?
+) {
+    val isOriginal: Boolean
+        get() = composeMatrix == null && androidMatrix == null
+
+    companion object {
+        fun original() = ImageFilterOption("原图", "原", null, null)
+
+        fun defaults(): List<ImageFilterOption> {
+            return listOf(
+                original(),
+                saturationFilter("黑白", "黑", 0f),
+                colorScaleFilter("复古", "旧", red = 1.12f, green = 0.95f, blue = 0.72f),
+                colorScaleFilter("鲜亮", "亮", red = 1.12f, green = 1.12f, blue = 1.04f),
+                colorScaleFilter("暖调", "暖", red = 1.16f, green = 1.04f, blue = 0.88f),
+                colorScaleFilter("冷调", "冷", red = 0.9f, green = 1.02f, blue = 1.18f),
+                colorScaleFilter("高对比", "高", red = 1.18f, green = 1.18f, blue = 1.18f)
+            )
+        }
+
+        private fun saturationFilter(name: String, shortName: String, saturation: Float): ImageFilterOption {
+            val compose = ColorMatrix().apply { setToSaturation(saturation) }
+            val android = android.graphics.ColorMatrix().apply { setSaturation(saturation) }
+            return ImageFilterOption(name, shortName, compose, android)
+        }
+
+        private fun colorScaleFilter(name: String, shortName: String, red: Float, green: Float, blue: Float): ImageFilterOption {
+            val values = floatArrayOf(
+                red, 0f, 0f, 0f, 0f,
+                0f, green, 0f, 0f, 0f,
+                0f, 0f, blue, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f
+            )
+            return ImageFilterOption(
+                name = name,
+                shortName = shortName,
+                composeMatrix = ColorMatrix(values),
+                androidMatrix = android.graphics.ColorMatrix(values)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FilterCard(bitmap: Bitmap?, option: ImageFilterOption, selected: Boolean, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onClick() }) {
+        Box(
+            modifier = Modifier
+                .size(80.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF1F2937))
+                .border(
+                    width = if (selected) 2.dp else 0.dp,
+                    color = if (selected) Color(0xFF7C3AED) else Color.Transparent,
+                    shape = RoundedCornerShape(12.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    colorFilter = option.composeMatrix?.let { ColorFilter.colorMatrix(it) }
+                )
+            } else {
+                Text(text = option.shortName, color = Color.White, fontSize = 16.sp)
+            }
+        }
+        Text(
+            text = option.name,
+            color = if (selected) Color(0xFFC084FC) else Color(0xFF9CA3AF),
+            fontSize = 10.sp,
+            modifier = Modifier.padding(top = 6.dp)
+        )
     }
 }

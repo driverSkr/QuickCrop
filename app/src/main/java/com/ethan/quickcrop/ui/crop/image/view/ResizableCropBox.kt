@@ -26,6 +26,7 @@ import com.ethan.quickcrop.extension.moveInsideBounds
 import com.ethan.quickcrop.extension.resizeFree
 import com.ethan.quickcrop.extension.resizeWithAspectRatio
 import com.ethan.quickcrop.ui.crop.image.model.DragMode
+import kotlin.math.abs
 import kotlin.math.min
 
 /**
@@ -37,6 +38,9 @@ fun ResizableCropBox(
     cropBounds: Rect = Rect.Zero,
     aspectRatio: Float? = 1f,   // null 表示自由比例；1f 表示 1:1；16f / 9f 表示 16:9
     minSize: Float = 160f,
+    initialCropScale: Float = 0.9f,
+    visible: Boolean = true,
+    enabled: Boolean = true,
     // 所有裁剪框变化都会回调，页面用它保存最新矩形并参与最终导出。
     onCropRectChanged: (Rect) -> Unit = {},
     // 只有用户主动拖动/拉伸时回调，页面用它点亮裁剪按钮。
@@ -50,15 +54,17 @@ fun ResizableCropBox(
     var dragMode by remember { mutableStateOf(DragMode.None) }
     // 边角触摸半径
     val cornerTouchRadius = 60f
+    // 初始裁剪框贴住图片时，边缘也要能触发缩放，避免用户误以为裁剪框被锁死。
+    val edgeResizeTouchInset = 72f
     // 角标长度
     val cornerHandleLength = 52f
     // 角标粗细
     val cornerHandleThickness = 10f
 
-    LaunchedEffect(cropBounds, aspectRatio) {
+    LaunchedEffect(cropBounds, aspectRatio, initialCropScale) {
         // 图片加载或比例切换时，裁剪框重置为图片区域内可容纳的最大矩形。
         if (!cropBounds.isEmpty) {
-            cropRect = createInitialCropRect(cropBounds, aspectRatio)
+            cropRect = createInitialCropRect(cropBounds, aspectRatio, initialCropScale)
             onCropRectChanged(cropRect)
         }
     }
@@ -71,13 +77,18 @@ fun ResizableCropBox(
         .graphicsLayer {
             compositingStrategy = CompositingStrategy.Offscreen
         }
-        .pointerInput(canvasSize, cropBounds, aspectRatio) {
+        .pointerInput(canvasSize, cropBounds, aspectRatio, enabled) {
+            if (!enabled) {
+                return@pointerInput
+            }
             detectDragGestures(
                 onDragStart = { offset ->
                     dragMode = detectDragMode(
                         touch = offset,
                         rect = cropRect,
-                        cornerRadius = cornerTouchRadius
+                        bounds = cropBounds,
+                        cornerRadius = cornerTouchRadius,
+                        edgeResizeInset = edgeResizeTouchInset
                     )
                 },
                 onDragEnd = {
@@ -121,7 +132,7 @@ fun ResizableCropBox(
             )
         }
     ) {
-        if (cropBounds.isEmpty || cropRect.isEmpty) {
+        if (!visible || cropBounds.isEmpty || cropRect.isEmpty) {
             return@Canvas
         }
 
@@ -165,18 +176,38 @@ fun ResizableCropBox(
 private fun detectDragMode(
     touch: Offset,
     rect: Rect,
-    cornerRadius: Float
+    bounds: Rect,
+    cornerRadius: Float,
+    edgeResizeInset: Float
 ): DragMode {
     val topLeft = Offset(rect.left, rect.top)
     val topRight = Offset(rect.right, rect.top)
     val bottomLeft = Offset(rect.left, rect.bottom)
     val bottomRight = Offset(rect.right, rect.bottom)
+    val centerX = (rect.left + rect.right) / 2f
+    val centerY = (rect.top + rect.bottom) / 2f
+    val isMoveLocked = rect.width >= bounds.width || rect.height >= bounds.height
+    val nearLeft = abs(touch.x - rect.left) <= edgeResizeInset
+    val nearRight = abs(touch.x - rect.right) <= edgeResizeInset
+    val nearTop = abs(touch.y - rect.top) <= edgeResizeInset
+    val nearBottom = abs(touch.y - rect.bottom) <= edgeResizeInset
 
     return when {
         touch.distanceTo(topLeft) <= cornerRadius -> DragMode.TopLeft
         touch.distanceTo(topRight) <= cornerRadius -> DragMode.TopRight
         touch.distanceTo(bottomLeft) <= cornerRadius -> DragMode.BottomLeft
         touch.distanceTo(bottomRight) <= cornerRadius -> DragMode.BottomRight
+
+        // 初始框与图片持平时，内部拖动无法移动；靠边触摸直接转为缩放，保留可编辑手感。
+        isMoveLocked && rect.contains(touch) && (nearLeft || nearRight || nearTop || nearBottom) -> {
+            when {
+                nearLeft -> if (touch.y < centerY) DragMode.TopLeft else DragMode.BottomLeft
+                nearRight -> if (touch.y < centerY) DragMode.TopRight else DragMode.BottomRight
+                nearTop -> if (touch.x < centerX) DragMode.TopLeft else DragMode.TopRight
+                nearBottom -> if (touch.x < centerX) DragMode.BottomLeft else DragMode.BottomRight
+                else -> DragMode.None
+            }
+        }
 
         rect.contains(touch) -> DragMode.Move
 
@@ -218,13 +249,13 @@ private fun Rect.resizeFromCorner(
     }
 }
 
-private fun createInitialCropRect(bounds: Rect, aspectRatio: Float?): Rect {
-    // 初始裁剪框缩小到 bounds 的 90%，留出拖拽移动的空间。
-    val initialScale = 0.9f
+private fun createInitialCropRect(bounds: Rect, aspectRatio: Float?, initialScale: Float): Rect {
+    // 初始比例限制在 (0, 1]，避免外部传入异常值导致裁剪框越过图片边界。
+    val safeInitialScale = initialScale.coerceIn(0.01f, 1f)
 
     if (aspectRatio == null || aspectRatio <= 0f) {
-        val cropWidth = bounds.width * initialScale
-        val cropHeight = bounds.height * initialScale
+        val cropWidth = bounds.width * safeInitialScale
+        val cropHeight = bounds.height * safeInitialScale
         val left = bounds.left + (bounds.width - cropWidth) / 2f
         val top = bounds.top + (bounds.height - cropHeight) / 2f
         return Rect(
@@ -239,10 +270,10 @@ private fun createInitialCropRect(bounds: Rect, aspectRatio: Float?): Rect {
     val maxWidth: Float
     val maxHeight: Float
     if (boundsRatio > aspectRatio) {
-        maxHeight = bounds.height * initialScale
+        maxHeight = bounds.height * safeInitialScale
         maxWidth = maxHeight * aspectRatio
     } else {
-        maxWidth = bounds.width * initialScale
+        maxWidth = bounds.width * safeInitialScale
         maxHeight = maxWidth / aspectRatio
     }
 

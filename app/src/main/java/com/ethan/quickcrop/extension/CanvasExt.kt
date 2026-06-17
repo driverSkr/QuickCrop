@@ -31,19 +31,23 @@ fun Rect.moveInsideBounds(
     dragAmount: Offset,
     bounds: Rect
 ): Rect {
-    // 如果裁剪框大于等于边界，直接居中锁定，不处理移动。
-    if (width >= bounds.width || height >= bounds.height) {
-        return this
-    }
-
     val newLeft = left + dragAmount.x
     val newTop = top + dragAmount.y
 
     val maxLeft = bounds.right - width
     val maxTop = bounds.bottom - height
 
-    val fixedLeft = newLeft.coerceIn(bounds.left, maxLeft)
-    val fixedTop = newTop.coerceIn(bounds.top, maxTop)
+    // 只锁住已经贴满的方向，另一个方向仍然允许移动，避免固定比例裁剪框被误认为完全不能拖动。
+    val fixedLeft = if (width >= bounds.width) {
+        bounds.left + (bounds.width - width) / 2F
+    } else {
+        newLeft.coerceIn(bounds.left, maxLeft)
+    }
+    val fixedTop = if (height >= bounds.height) {
+        bounds.top + (bounds.height - height) / 2F
+    } else {
+        newTop.coerceIn(bounds.top, maxTop)
+    }
 
     return Rect(
         left = fixedLeft,
@@ -101,7 +105,14 @@ fun Rect.resizeWithAspectRatio(
         else -> return this
     }
 
-    var newWidth = abs(movingX - fixedX)
+    val widthFromHorizontalDrag = abs(movingX - fixedX)
+    val widthFromVerticalDrag = abs(movingY - fixedY) * aspectRatio
+    // 固定比例缩放同时响应横向和纵向拖动；初始框贴住图片时，从上/下边缘向内拖也应能缩放。
+    var newWidth = if (abs(dragAmount.x) >= abs(dragAmount.y) * aspectRatio) {
+        widthFromHorizontalDrag
+    } else {
+        widthFromVerticalDrag
+    }
     var newHeight = newWidth / aspectRatio
 
     if (newWidth < minSize) {
