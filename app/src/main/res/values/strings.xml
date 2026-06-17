@@ -3,7 +3,10 @@
     <string name="media_picker_recent">最近项目</string>
     <string name="media_picker_unknown_album">未知相册</string>
     <string name="media_picker_no_photos">暂无照片</string>
+    <string name="media_picker_no_videos">暂无视频</string>
     <string name="media_picker_permission_message">需要照片访问权限后才能展示本地图片。</string>
+    <string name="media_picker_video_permission_message">需要视频访问权限后才能展示本地视频。</string>
+    <string name="media_picker_media_permission_message">需要媒体访问权限后才能展示本地图片和视频。</string>
     <string name="media_picker_go_settings">去设置</string>
     <string name="media_picker_confirm_selection">选择</string>
     <string name="media_picker_open_settings_failed">无法打开权限设置</string>

@@ -1,10 +1,11 @@
 # QuickCrop
 
-QuickCrop 是一个基于 Android Jetpack Compose 的本地图片选择与编辑示例项目。当前主流程聚焦在图片处理链路：
+QuickCrop 是一个基于 Android Jetpack Compose 的本地媒体选择与编辑示例项目。当前主流程聚焦在图片处理链路，并提供视频编辑入口：
 
-- 自定义相册：读取本地图片，支持最近项目、相册分组、网格预览和大图预览
+- 自定义相册：按图片、视频或混合入口读取本地媒体，支持最近项目、相册分组、网格预览和大图预览
 - 图片导入：校验图片格式与尺寸，支持 JPG、PNG、WebP，并将 HEIC/HEIF 转换为 JPG
 - 图片编辑：支持裁剪、镜像、90 度旋转、角度微调、滤镜、亮度/对比度/饱和度/色温/清晰度调节
+- 视频编辑：支持从视频相册进入视频剪辑预览页，后续可继续接入导出链路
 - 结果预览：编辑完成后保存到相册，并进入独立结果页查看最终图片
 
 这个项目更偏向“可运行的工程示例”，适合用来学习 Compose 页面组织、MediaStore 相册读取、图片导入校验、Canvas 自定义裁剪框，以及基于原图像素的编辑结果导出。
@@ -12,11 +13,12 @@ QuickCrop 是一个基于 Android Jetpack Compose 的本地图片选择与编辑
 ## 功能概览
 
 - 自定义相册页面
-  - 请求并处理 Android 不同版本的图片访问权限
-  - 从 MediaStore 读取本地图片
-  - 按最近项目和相册分组展示图片
-  - 支持图片网格、相册列表和全屏预览
+  - 请求并处理 Android 不同版本的图片、视频访问权限
+  - 从 MediaStore 读取本地图片和视频
+  - 按最近项目和相册分组展示媒体
+  - 支持媒体网格、相册列表和全屏预览
   - 支持选择图片后进入裁剪流程
+  - 支持选择视频后进入视频编辑流程
 - 图片导入链路
   - 支持 JPG、PNG、WebP、HEIC、HEIF
   - 限制最大分辨率与最长边，避免导入超大图片导致内存风险
@@ -44,7 +46,7 @@ QuickCrop 是一个基于 Android Jetpack Compose 的本地图片选择与编辑
 - AndroidX Activity / Lifecycle
 - MediaStore
 - Coil
-- Media3 依赖已接入，视频裁剪 Activity 当前仍是预留壳
+- Media3 依赖已接入，视频编辑页已支持基础预览和剪辑参数收集
 
 ## 环境要求
 
@@ -74,7 +76,7 @@ QuickCrop/
         │   ├── core/
         │   ├── extension/
         │   ├── ui/media/
-        │   └── ui/edit/image/
+        │   └── ui/edit/
         └── res/
 ```
 
@@ -84,11 +86,11 @@ QuickCrop/
 
 ### 自定义相册
 
-- `MainActivity` 是应用入口，当前直接进入自定义相册选择流程
-- `MediaPickActivity` 承载相册选择页面，并在导入成功后跳转到图片裁剪页
-- `MediaPickPage` 负责权限请求、相册数据加载、图片预览、导入校验和缓存准备
-- `MediaPickModels` 定义相册和图片列表使用的数据模型
-- `PhotoGrid`、`AlbumList`、`MediaPreviewPage` 等组件拆分相册列表、图片网格和预览层
+- `MainActivity` 是应用入口，提供图片、视频、音频三类编辑入口
+- `MediaPickActivity` 承载相册选择页面，并在导入成功后跳转到图片或视频编辑页
+- `MediaPickPage` 负责权限请求、相册数据加载、媒体预览、导入校验和缓存准备
+- `MediaPickModels` 定义相册和媒体列表使用的数据模型
+- `PhotoGrid`、`AlbumList`、`MediaPreviewPage` 等组件拆分相册列表、媒体网格和预览层
 
 ### 图片导入校验
 
@@ -106,6 +108,12 @@ QuickCrop/
 - `ResizableCropBox` 负责绘制裁剪框，并处理移动、四角缩放和固定比例约束
 - `ImageEditSaveProcessor` 负责重新读取原图，根据裁剪框和编辑参数输出最终图片并保存到相册
 - `EditImageResultActivity` 与 `EditImageResultPage` 负责展示编辑后的最终图片
+
+### 视频编辑
+
+- `VideoEditActivity` 负责接收视频 Uri 并加载视频编辑页面
+- 视频入口使用 `READ_MEDIA_VIDEO` 判断授权，避免只授权照片时误显示视频相册为空
+- 视频相册空状态和权限提示会按视频入口展示“暂无视频”和视频访问说明
 
 ### Compose 自定义绘制速查
 
@@ -369,8 +377,8 @@ Windows PowerShell 下可以使用：
 
 - `:app:compileDebugKotlin` 已通过
 - 图片选择、导入校验、裁剪导出和结果预览是当前主链路
-- `CropVideoActivity` 当前为空实现，视频裁剪功能仍处于预留状态
-- `Media3` 相关依赖已经接入，但暂未形成可运行的视频裁剪流程
+- `VideoEditActivity` 已提供视频预览、裁剪区间、拼接占位、速度调整和导出参数页面
+- `Media3` 相关依赖已经接入，后续可继续完善 Transformer 实际导出流程
 
 ## 注意事项
 
@@ -385,5 +393,5 @@ Windows PowerShell 下可以使用：
 - 将裁剪结果保存到系统相册
 - 增加图片旋转、翻转、滤镜、贴纸、撤销重做等编辑能力
 - 为裁剪导出增加进度提示和失败重试
-- 完善视频裁剪页面、时间轴预览和 Media3 Transformer 导出流程
+- 完善视频时间轴预览和 Media3 Transformer 导出流程
 - 补充单元测试和 UI 测试

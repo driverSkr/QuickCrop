@@ -12,7 +12,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.ethan.base.BaseActivity
-import com.ethan.quickcrop.ui.edit.video.CropVideoActivity
+import com.ethan.quickcrop.ui.edit.video.VideoEditActivity
 import com.ethan.quickcrop.ui.edit.image.ImageEditActivity
 import com.ethan.quickcrop.ui.media.page.MediaPickPage
 import com.ethan.quickcrop.ui.theme.QuickCropTheme
@@ -59,8 +59,8 @@ class MediaPickActivity : BaseActivity() {
     private fun openCropVideoPage(videoUri: Uri) {
         // 视频模块当前只实现 UI 入口，后续接入剪辑链路时可在这里传递视频 Uri 或缓存路径。
         val started = startActivitySafely(
-            Intent(this, CropVideoActivity::class.java).apply {
-                putExtra(CropVideoActivity.EXTRA_VIDEO_URI, videoUri.toString())
+            Intent(this, VideoEditActivity::class.java).apply {
+                putExtra(VideoEditActivity.EXTRA_VIDEO_URI, videoUri.toString())
             }
         )
         if (started) {

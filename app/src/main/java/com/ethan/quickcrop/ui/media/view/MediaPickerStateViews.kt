@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.quickcrop.R
+import com.ethan.quickcrop.ui.media.MediaPickType
 
 /**
  * 加载状态子页面：用于相册权限确认或媒体数据读取中的等待展示。
@@ -42,13 +43,16 @@ internal fun LoadingState(modifier: Modifier = Modifier) {
  * 空相册状态子页面：用于已获得权限但没有可展示照片时提示用户。
  */
 @Composable
-internal fun EmptyPhotoState(modifier: Modifier = Modifier) {
+internal fun EmptyPhotoState(
+    pickType: MediaPickType,
+    modifier: Modifier = Modifier
+) {
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Image(painter = painterResource(id = R.drawable.img_empty_photo), contentScale = ContentScale.Crop, contentDescription = null, modifier = Modifier.size(80.dp))
             Spacer(modifier = Modifier.height(28.dp))
             Text(
-                text = stringResource(R.string.media_picker_no_photos),
+                text = stringResource(pickType.emptyTextRes),
                 color = Color.White,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.W700
@@ -62,6 +66,7 @@ internal fun EmptyPhotoState(modifier: Modifier = Modifier) {
  */
 @Composable
 internal fun PermissionDeniedState(
+    pickType: MediaPickType,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -70,14 +75,14 @@ internal fun PermissionDeniedState(
             Image(painter = painterResource(id = R.drawable.img_empty_photo), contentScale = ContentScale.Crop, contentDescription = null, modifier = Modifier.size(80.dp))
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = stringResource(R.string.media_picker_no_photos),
+                text = stringResource(pickType.emptyTextRes),
                 color = Color.White,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.W700
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = stringResource(R.string.media_picker_permission_message),
+                text = stringResource(pickType.permissionMessageRes),
                 color = Color.White.copy(alpha = 0.5f),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.W400,
@@ -105,3 +110,16 @@ internal fun PermissionDeniedState(
         }
     }
 }
+
+private val MediaPickType.emptyTextRes: Int
+    get() = when (this) {
+        MediaPickType.VIDEO -> R.string.media_picker_no_videos
+        else -> R.string.media_picker_no_photos
+    }
+
+private val MediaPickType.permissionMessageRes: Int
+    get() = when (this) {
+        MediaPickType.VIDEO -> R.string.media_picker_video_permission_message
+        MediaPickType.ALL -> R.string.media_picker_media_permission_message
+        else -> R.string.media_picker_permission_message
+    }

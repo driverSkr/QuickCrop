@@ -117,6 +117,7 @@ fun MediaPickPage(
         scope.launch {
             isLoadingPhotos = true
             val media = withContext(Dispatchers.IO) { loadMediaItems(context, pickType) }
+            Log.d(TAG, "刷新媒体列表完成: pickType=$pickType, count=${media.size}")
             photos = media
             albums = buildMediaAlbums(context, media)
             if (selectedAlbumId != RECENT_ALBUM_ID && albums.none { it.id == selectedAlbumId }) {
@@ -249,6 +250,7 @@ fun MediaPickPage(
             when {
                 permissionState == PhotoPermissionState.Denied -> {
                     PermissionDeniedState(
+                        pickType = pickType,
                         onOpenSettings = { openAppSettings() },
                         modifier = Modifier.weight(1f)
                     )
@@ -257,7 +259,10 @@ fun MediaPickPage(
                     LoadingState(modifier = Modifier.weight(1f))
                 }
                 photos.isEmpty() -> {
-                    EmptyPhotoState(modifier = Modifier.weight(1f))
+                    EmptyPhotoState(
+                        pickType = pickType,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
                 showAlbumList -> {
                     AlbumList(
@@ -352,7 +357,8 @@ internal fun hasMediaPermission(context: Context, pickType: MediaPickType): Bool
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
     return when (pickType) {
         MediaPickType.IMAGE -> imagePermissionGranted || limitedPhotoGranted
-        MediaPickType.VIDEO -> videoPermissionGranted || limitedPhotoGranted
+        // 视频入口不能直接复用“部分照片访问”状态，否则用户只授权过图片时会跳过视频权限请求，导致视频相册为空。
+        MediaPickType.VIDEO -> videoPermissionGranted
         MediaPickType.ALL -> imagePermissionGranted || videoPermissionGranted || limitedPhotoGranted
     }
 }

@@ -21,7 +21,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 
 /**
  * Activity 基类，用来收敛所有页面通用的行为和工具方法。
- *
+ * 176070
  * 当前基类保持轻量，只放和页面生命周期、跳转、系统 UI、输入法、Intent 参数读取等
  * 强相关的基础能力，避免把具体业务逻辑下沉到 base 模块。
  */

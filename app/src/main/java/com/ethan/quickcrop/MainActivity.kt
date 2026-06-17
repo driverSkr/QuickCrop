@@ -36,7 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.base.BaseActivity
-import com.ethan.quickcrop.ui.edit.audio.AudioEditorActivity
+import com.ethan.quickcrop.ui.edit.audio.AudioEditActivity
 import com.ethan.quickcrop.ui.media.MediaPickActivity
 import com.ethan.quickcrop.ui.media.MediaPickType
 import com.ethan.quickcrop.ui.theme.QuickCropTheme
@@ -51,7 +51,7 @@ class MainActivity : BaseActivity() {
                 HomePage(
                     onImageClick = { MediaPickActivity.launch(this@MainActivity, MediaPickType.IMAGE) },
                     onVideoClick = { MediaPickActivity.launch(this@MainActivity, MediaPickType.VIDEO) },
-                    onAudioClick = { openPlaceholderEditor(AudioEditorActivity::class.java, "音频编辑") }
+                    onAudioClick = { openPlaceholderEditor(AudioEditActivity::class.java, "音频编辑") }
                 )
             }
         }

@@ -69,10 +69,10 @@ import com.ethan.quickcrop.ui.media.MediaPickType
 import com.ethan.quickcrop.ui.theme.QuickCropTheme
 import kotlinx.coroutines.delay
 
-private const val TAG = "CropVideoActivity"
+private const val TAG = "VideoEditActivity"
 private const val DEFAULT_VIDEO_DURATION_MS = 45_000L
 
-class CropVideoActivity : BaseActivity() {
+class VideoEditActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val videoUri = getStringExtra(EXTRA_VIDEO_URI)?.let(Uri::parse)

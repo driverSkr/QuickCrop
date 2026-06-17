@@ -30,7 +30,7 @@ import com.ethan.base.BaseActivity
 import com.ethan.quickcrop.R
 import com.ethan.quickcrop.ui.theme.QuickCropTheme
 
-class AudioEditorActivity : BaseActivity() {
+class AudioEditActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
