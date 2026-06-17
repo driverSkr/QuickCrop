@@ -1,4 +1,4 @@
-package com.ethan.quickcrop.ui.crop.image.view
+package com.ethan.quickcrop.ui.edit.image.view
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures

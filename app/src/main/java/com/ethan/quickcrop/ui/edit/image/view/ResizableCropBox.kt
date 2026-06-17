@@ -1,4 +1,4 @@
-package com.ethan.quickcrop.ui.crop.image.view
+package com.ethan.quickcrop.ui.edit.image.view
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -25,9 +25,10 @@ import androidx.compose.ui.unit.IntSize
 import com.ethan.quickcrop.extension.moveInsideBounds
 import com.ethan.quickcrop.extension.resizeFree
 import com.ethan.quickcrop.extension.resizeWithAspectRatio
-import com.ethan.quickcrop.ui.crop.image.model.DragMode
+import com.ethan.quickcrop.ui.edit.image.model.DragMode
 import kotlin.math.abs
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * 支持四角缩放 + 固定比例的裁剪框
@@ -41,6 +42,7 @@ fun ResizableCropBox(
     initialCropScale: Float = 0.9f,
     visible: Boolean = true,
     enabled: Boolean = true,
+    resetSignal: Int = 0,
     // 所有裁剪框变化都会回调，页面用它保存最新矩形并参与最终导出。
     onCropRectChanged: (Rect) -> Unit = {},
     // 只有用户主动拖动/拉伸时回调，页面用它点亮裁剪按钮。
@@ -61,9 +63,10 @@ fun ResizableCropBox(
     // 角标粗细
     val cornerHandleThickness = 10f
 
-    LaunchedEffect(cropBounds, aspectRatio, initialCropScale) {
-        // 图片加载或比例切换时，裁剪框重置为图片区域内可容纳的最大矩形。
+    LaunchedEffect(cropBounds, aspectRatio, initialCropScale, resetSignal) {
+        // 图片加载、比例切换或外部重置时，裁剪框恢复为图片区域内可容纳的最大矩形。
         if (!cropBounds.isEmpty) {
+            dragMode = DragMode.None
             cropRect = createInitialCropRect(cropBounds, aspectRatio, initialCropScale)
             onCropRectChanged(cropRect)
         }
@@ -218,7 +221,7 @@ private fun detectDragMode(
 private fun Offset.distanceTo(other: Offset): Float {
     val dx = x - other.x
     val dy = y - other.y
-    return kotlin.math.sqrt(dx * dx + dy * dy)
+    return sqrt(dx * dx + dy * dy)
 }
 
 /**

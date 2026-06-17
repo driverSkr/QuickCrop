@@ -1,4 +1,4 @@
-package com.ethan.quickcrop.ui.crop.image.model
+package com.ethan.quickcrop.ui.edit.image.model
 
 /**
  * 拖拽模式，作用是判断当前手指拖的是整个框，还是某个角

@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -190,6 +191,8 @@ class ArcScaleViewState(
     }
 }
 
+typealias ArcValueScaleState = ArcScaleViewState
+
 @Composable
 fun rememberArcScaleViewState(
     scaleMin: Int = -45,
@@ -203,6 +206,43 @@ fun rememberArcScaleViewState(
             initialValue = initialValue
         )
     }
+}
+
+@Composable
+fun rememberArcValueScaleState(
+    scaleMin: Int = -45,
+    scaleMaxLength: Int = 90,
+    initialValue: Float = 0F
+): ArcValueScaleState {
+    return rememberArcScaleViewState(
+        scaleMin = scaleMin,
+        scaleMaxLength = scaleMaxLength,
+        initialValue = initialValue
+    )
+}
+
+/**
+ * 通用弧形数值刻度盘。
+ *
+ * 旧的 ArcScaleView 继续保留，业务页面优先使用 ArcValueScale 这个更中性的命名。
+ */
+@Composable
+fun ArcValueScale(
+    state: ArcValueScaleState,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onValueChanged: (Float) -> Unit = {},
+    onStartMove: () -> Unit = {},
+    onEndMove: () -> Unit = {}
+) {
+    ArcScaleView(
+        state = state,
+        modifier = modifier,
+        enabled = enabled,
+        onValueChanged = onValueChanged,
+        onStartMove = onStartMove,
+        onEndMove = onEndMove
+    )
 }
 
 /**
@@ -221,6 +261,9 @@ fun ArcScaleView(
 ) {
     val scope = rememberCoroutineScope()
     var zeroSnapJob: Job? by remember { mutableStateOf(null) }
+    val currentOnValueChanged by rememberUpdatedState(onValueChanged)
+    val currentOnStartMove by rememberUpdatedState(onStartMove)
+    val currentOnEndMove by rememberUpdatedState(onEndMove)
     // 旧 ScaleView 这里使用的是裸像素 30，而不是 dp；保持一致才能对齐原刻度密度和拖动手感。
     val eachScalePx = EACH_SCALE_PX
 
@@ -251,19 +294,19 @@ fun ArcScaleView(
                     onDragStart = {
                         zeroSnapJob?.cancel()
                         state.startTideEffectForDrag()
-                        onStartMove()
+                        currentOnStartMove()
                     },
                     onDragEnd = {
                         zeroSnapJob = scope.launch {
-                            if (!state.snapToZeroIfNeeded(onValueChanged, onEndMove)) {
-                                onEndMove()
+                            if (!state.snapToZeroIfNeeded(currentOnValueChanged, currentOnEndMove)) {
+                                currentOnEndMove()
                             }
                         }
                     },
                     onDragCancel = {
                         zeroSnapJob = scope.launch {
-                            if (!state.snapToZeroIfNeeded(onValueChanged, onEndMove)) {
-                                onEndMove()
+                            if (!state.snapToZeroIfNeeded(currentOnValueChanged, currentOnEndMove)) {
+                                currentOnEndMove()
                             }
                         }
                     }
@@ -274,7 +317,7 @@ fun ArcScaleView(
                         change.positionChange().x
                     }
                     change.consume()
-                    state.dragBy(deltaX, eachScalePx, onValueChanged)
+                    state.dragBy(deltaX, eachScalePx, currentOnValueChanged)
                 }
             }
     ) {

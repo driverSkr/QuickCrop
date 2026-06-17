@@ -1,4 +1,4 @@
-package com.ethan.quickcrop.ui.crop.video
+package com.ethan.quickcrop.ui.edit.video
 
 import android.content.Intent
 import android.net.Uri
@@ -40,7 +40,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -591,8 +593,8 @@ private fun TimelineTrimControl(
                 drawRoundRect(
                     brush = Brush.horizontalGradient(listOf(Color(0xFF2563EB), Color(0xFF60A5FA))),
                     topLeft = Offset(size.width * startFraction, 0f),
-                    size = androidx.compose.ui.geometry.Size(size.width * (endFraction - startFraction), size.height),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx(), 8.dp.toPx())
+                    size = Size(size.width * (endFraction - startFraction), size.height),
+                    cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
                 )
                 val playheadX = size.width * (playbackPositionMs.toFloat() / durationMs).coerceIn(0f, 1f)
                 drawLine(Color.White, Offset(playheadX, 0f), Offset(playheadX, size.height), strokeWidth = 3f)

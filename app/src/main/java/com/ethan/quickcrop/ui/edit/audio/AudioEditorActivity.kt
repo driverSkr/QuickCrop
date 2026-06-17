@@ -1,4 +1,4 @@
-package com.ethan.quickcrop.ui.audio
+package com.ethan.quickcrop.ui.edit.audio
 
 import android.os.Bundle
 import androidx.activity.compose.setContent

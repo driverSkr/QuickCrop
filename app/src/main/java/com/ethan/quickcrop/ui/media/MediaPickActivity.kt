@@ -12,8 +12,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.ethan.base.BaseActivity
-import com.ethan.quickcrop.ui.crop.image.CropImageActivity
-import com.ethan.quickcrop.ui.crop.video.CropVideoActivity
+import com.ethan.quickcrop.ui.edit.video.CropVideoActivity
 import com.ethan.quickcrop.ui.edit.image.EditImageActivity
 import com.ethan.quickcrop.ui.media.page.MediaPickPage
 import com.ethan.quickcrop.ui.theme.QuickCropTheme

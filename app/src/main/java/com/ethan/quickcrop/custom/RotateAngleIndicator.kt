@@ -34,6 +34,36 @@ data class RotateAngleIndicatorColors(
     val negativeTrack: Color = Color(0x26FFFFFF)
 )
 
+typealias NumericValueIndicatorColors = RotateAngleIndicatorColors
+
+/**
+ * 通用数值指示器。
+ *
+ * 保留旧的 RotateAngleIndicator 入口做兼容，新增更中性的命名给旋转、调节等场景共用。
+ */
+@Composable
+fun NumericValueIndicator(
+    value: Int,
+    progressFraction: Float,
+    isNegative: Boolean,
+    modifier: Modifier = Modifier,
+    size: Dp = 48.dp,
+    strokeWidth: Dp = 2.dp,
+    colors: NumericValueIndicatorColors = NumericValueIndicatorColors(),
+    animateProgress: Boolean = true
+) {
+    RotateAngleIndicator(
+        angle = value,
+        progressFraction = progressFraction,
+        isNegative = isNegative,
+        modifier = modifier,
+        size = size,
+        strokeWidth = strokeWidth,
+        colors = colors,
+        animateProgress = animateProgress
+    )
+}
+
 /**
  * Compose 版旋转角度数值指示器。
  *
