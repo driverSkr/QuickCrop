@@ -3,7 +3,6 @@ package com.ethan.quickcrop.core.image
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
@@ -38,7 +37,11 @@ object ImageEditSaveProcessor {
             try {
                 val outputBitmap = renderEditedCropBitmap(sourceBitmap, request)
                 try {
-                    saveBitmapToGallery(context, outputBitmap)
+                    saveBitmapToGallery(
+                        context = context,
+                        bitmap = outputBitmap,
+                        sourceUri = request.sourceUri
+                    )
                 } finally {
                     outputBitmap.recycle()
                 }
@@ -51,11 +54,8 @@ object ImageEditSaveProcessor {
     }
 
     private fun decodeSourceBitmap(context: Context, uri: Uri): Bitmap {
-        return requireNotNull(context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            BitmapFactory.decodeStream(inputStream)
-        }) {
-            "原图解码失败: $uri"
-        }
+        // 导出时读取原图并立即按 EXIF 方向摆正，后续裁剪映射都基于用户看到的正向图片。
+        return ImageExifUtils.decodeBitmapWithCorrectedOrientation(context, uri)
     }
 
     private fun renderEditedCropBitmap(sourceBitmap: Bitmap, request: ImageEditSaveRequest): Bitmap {
@@ -122,7 +122,7 @@ object ImageEditSaveProcessor {
             normalizedDegrees == FULL_ROTATION_DEGREES - RIGHT_ANGLE_ROTATION_STEP_DEGREES
     }
 
-    private fun saveBitmapToGallery(context: Context, bitmap: Bitmap): Uri {
+    private fun saveBitmapToGallery(context: Context, bitmap: Bitmap, sourceUri: Uri): Uri {
         val resolver = context.contentResolver
         val displayName = "QuickCrop_${System.currentTimeMillis()}.jpg"
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -151,6 +151,13 @@ object ImageEditSaveProcessor {
                     "图片压缩写入失败"
                 }
             } ?: error("打开相册输出流失败")
+            ImageExifUtils.copyExifMetadata(
+                context = context,
+                sourceUri = sourceUri,
+                outputUri = outputUri,
+                outputWidth = bitmap.width,
+                outputHeight = bitmap.height
+            )
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)

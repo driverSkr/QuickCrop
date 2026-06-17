@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -13,10 +14,15 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -32,7 +38,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,12 +53,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -66,6 +78,9 @@ import com.ethan.quickcrop.R
 import com.ethan.quickcrop.core.image.ImageEditSaveProcessor
 import com.ethan.quickcrop.core.image.ImageEditSaveRequest
 import com.ethan.quickcrop.core.image.ImagePreviewDecoder
+import com.ethan.quickcrop.core.image.ImageRegionPreviewDecoder
+import com.ethan.quickcrop.core.image.ImageRegionTile
+import com.ethan.quickcrop.core.image.ImageRegionTileRequest
 import com.ethan.quickcrop.custom.ArcValueScale
 import com.ethan.quickcrop.custom.ArcValueScaleState
 import com.ethan.quickcrop.custom.NumericValueIndicator
@@ -86,6 +101,11 @@ private const val DEFAULT_ROTATE_ANGLE_LIMIT = 45F
 private const val DEFAULT_ADJUSTMENT_LIMIT = 50F
 private const val RIGHT_ANGLE_ROTATION_STEP_DEGREES = 90
 private const val FULL_ROTATION_DEGREES = 360
+private const val MIN_PREVIEW_ZOOM = 0.5F
+private const val MAX_PREVIEW_ZOOM = 5F
+private const val ORIGINAL_TILE_ZOOM_THRESHOLD = 1.6F
+private const val CROP_CORNER_TOUCH_RADIUS = 60F
+private const val CROP_EDGE_RESIZE_TOUCH_INSET = 72F
 
 @Composable
 fun EditImagePage(sourceUri: Uri?) {
@@ -103,6 +123,8 @@ fun EditImagePage(sourceUri: Uri?) {
     val aspectRatioList = listOf("自由", "原始", "1:1", "16:9", "9:16", "4:3")
     var selectedAspectRatio by remember { mutableStateOf(aspectRatioList[0]) }
     var selectedCropOrientation by remember { mutableStateOf(CropAspectOrientation.Portrait) }
+    var previewZoom by remember { mutableStateOf(1F) }
+    var previewPan by remember { mutableStateOf(Offset.Zero) }
     // 底部工具栏负责模式选择，裁剪/滤镜/调节各自保留状态，切换时不重置用户操作。
     var selectedTool by remember { mutableStateOf(EditImageTool.Crop) }
     // 裁剪模式下的图片微调旋转角度，默认范围由通用弧形刻度盘控制。
@@ -122,6 +144,7 @@ fun EditImagePage(sourceUri: Uri?) {
     )
     // 防止用户连续点击保存造成重复写入相册。
     var isSaving by remember { mutableStateOf(false) }
+    var showDiscardConfirmDialog by remember { mutableStateOf(false) }
     // 当前裁剪框在 Compose 画布坐标系中的位置，导出时会映射回原图像素坐标。
     var currentCropRect by remember { mutableStateOf(Rect.Zero) }
     // 只有用户主动拖动裁剪框后才认为裁剪区域发生编辑，初始化贴图不点亮保存按钮。
@@ -154,7 +177,30 @@ fun EditImagePage(sourceUri: Uri?) {
     val previewColorMatrix = remember(selectedFilter, imageAdjustments) {
         buildComposeColorMatrix(selectedFilter, imageAdjustments)
     }
+    val regionTileRequest = remember(sourceUri, previewZoom, previewPan, imageContainerSize, imageLayerBounds) {
+        buildRegionTileRequest(
+            sourceUri = sourceUri,
+            zoom = previewZoom,
+            pan = previewPan,
+            containerSize = imageContainerSize,
+            imageLayerBounds = imageLayerBounds
+        )
+    }
+    val regionTile by produceState<ImageRegionTile?>(initialValue = null, regionTileRequest) {
+        value = regionTileRequest?.let { request ->
+            withContext(Dispatchers.IO) {
+                ImageRegionPreviewDecoder.decodeTile(
+                    context = context.applicationContext,
+                    request = request
+                )
+            }
+        }
+    }
+    val hasPreviewTransformChanged = abs(previewZoom - 1F) > 0.01F ||
+        abs(previewPan.x) > 0.5F ||
+        abs(previewPan.y) > 0.5F
     val hasEditOperation = hasCropUserChanged ||
+        hasPreviewTransformChanged ||
         abs(rotateAngle) > 0.01F ||
         isImageMirrored ||
         rightAngleRotationDegrees != 0 ||
@@ -176,6 +222,52 @@ fun EditImagePage(sourceUri: Uri?) {
         }
     }
 
+    LaunchedEffect(sourceUri) {
+        // 切换图片来源时重置查看缩放，避免上一张图的平移缩放影响新图初始展示。
+        previewZoom = 1F
+        previewPan = Offset.Zero
+    }
+
+    LaunchedEffect(imageContainerSize, imageBounds, currentCropRect, previewZoom) {
+        // 缩放/拖动查看时，图片的可见边界必须始终覆盖裁剪框，避免保存时露出空白。
+        val minimumZoom = calculateMinimumPreviewZoom(
+            imageBounds = imageBounds,
+            cropRect = currentCropRect
+        )
+        val safeZoom = previewZoom.coerceIn(minimumZoom, MAX_PREVIEW_ZOOM)
+        if (safeZoom != previewZoom) {
+            previewZoom = safeZoom
+        }
+        previewPan = previewPan.coercePreviewPan(
+            zoom = safeZoom,
+            imageBounds = imageBounds,
+            cropRect = currentCropRect
+        )
+    }
+
+    fun requestLeavePage() {
+        if (isSaving) {
+            Toast.makeText(context, "图片正在保存，请稍后", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (hasEditOperation) {
+            // 有未保存操作时，顶部返回和系统侧滑返回都先给用户二次确认。
+            showDiscardConfirmDialog = true
+            Log.d(TAG, "检测到未保存编辑操作，展示离开确认弹窗")
+        } else {
+            context.finishActivity()
+        }
+    }
+
+    BackHandler(enabled = true) {
+        if (showDiscardConfirmDialog) {
+            showDiscardConfirmDialog = false
+            Log.d(TAG, "用户通过返回键关闭离开确认弹窗")
+        } else {
+            requestLeavePage()
+        }
+    }
+
     fun handleResetClick() {
         if (!hasEditOperation) {
             Log.d(TAG, "没有编辑操作，忽略重置")
@@ -192,6 +284,8 @@ fun EditImagePage(sourceUri: Uri?) {
         selectedFilter = ImageFilterOption.original()
         selectedAdjustmentType = EditImageAdjustmentType.Brightness
         imageAdjustments = EditImageAdjustments()
+        previewZoom = 1F
+        previewPan = Offset.Zero
         hasCropUserChanged = false
         cropResetSignal += 1
         Log.d(TAG, "已重置所有图片编辑操作")
@@ -208,11 +302,30 @@ fun EditImagePage(sourceUri: Uri?) {
             Toast.makeText(context, "图片尚未准备完成，请稍后重试", Toast.LENGTH_SHORT).show()
             return
         }
+        val minimumZoom = calculateMinimumPreviewZoom(
+            imageBounds = imageBounds,
+            cropRect = currentCropRect
+        )
+        val safePreviewZoom = previewZoom.coerceIn(minimumZoom, MAX_PREVIEW_ZOOM)
+        val safePreviewPan = previewPan.coercePreviewPan(
+            zoom = safePreviewZoom,
+            imageBounds = imageBounds,
+            cropRect = currentCropRect
+        )
+        val transformedImageBounds = imageBounds.transformByPreviewGesture(
+            zoom = safePreviewZoom,
+            pan = safePreviewPan
+        )
+        val transformedImageLayerBounds = imageLayerBounds.transformByPreviewGesture(
+            zoom = safePreviewZoom,
+            pan = safePreviewPan
+        )
         val request = ImageEditSaveRequest(
             sourceUri = safeSourceUri,
             cropRect = currentCropRect,
-            visualImageBounds = imageBounds,
-            imageLayerBounds = imageLayerBounds,
+            // 保存时使用已经叠加查看缩放/平移后的图片边界，保证导出和屏幕预览一致。
+            visualImageBounds = transformedImageBounds,
+            imageLayerBounds = transformedImageLayerBounds,
             rightAngleRotationDegrees = rightAngleRotationDegrees,
             rotationDegrees = rightAngleRotationDegrees.toFloat() + rotateAngle,
             coverScale = imageCoverScale,
@@ -243,7 +356,7 @@ fun EditImagePage(sourceUri: Uri?) {
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         Row(modifier = Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(painter = painterResource(R.drawable.svg_icon_back), contentDescription = null, modifier = Modifier.clickable{
-                context.finishActivity()
+                requestLeavePage()
             })
             if (hasEditOperation) {
                 Spacer(modifier = Modifier.width(12.dp))
@@ -275,35 +388,138 @@ fun EditImagePage(sourceUri: Uri?) {
                 .clipToBounds()
                 .onSizeChanged {
                     imageContainerSize = it
+                }
+                .pointerInput(bitmap, imageContainerSize, imageBounds, currentCropRect, isCropToolSelected) {
+                    if (bitmap == null || imageContainerSize.width <= 0 || imageContainerSize.height <= 0) {
+                        return@pointerInput
+                    }
+                    awaitEachGesture {
+                        var handledMultiTouch = false
+                        var handledPreviewGesture = false
+                        while (true) {
+                            // 在 Initial 阶段优先处理图片层手势；裁剪框边角缩放区域会被保留给裁剪框自己处理。
+                            val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                            val pressedCount = event.changes.count { it.pressed }
+                            if (pressedCount == 0) {
+                                if (handledPreviewGesture) {
+                                    Log.d(TAG, "结束图片预览拖动/缩放: zoom=$previewZoom, pan=$previewPan")
+                                }
+                                break
+                            }
+
+                            if (pressedCount >= 2) {
+                                handledMultiTouch = true
+                                handledPreviewGesture = true
+                                val centroid = event.calculateCentroid(useCurrent = true)
+                                val pan = event.calculatePan()
+                                val zoomChange = event.calculateZoom()
+                                val oldZoom = previewZoom
+                                val minimumZoom = calculateMinimumPreviewZoom(
+                                    imageBounds = imageBounds,
+                                    cropRect = currentCropRect
+                                )
+                                val newZoom = (oldZoom * zoomChange).coerceIn(minimumZoom, MAX_PREVIEW_ZOOM)
+                                val contentPoint = Offset(
+                                    x = (centroid.x - previewPan.x) / oldZoom,
+                                    y = (centroid.y - previewPan.y) / oldZoom
+                                )
+                                val nextPan = Offset(
+                                    x = centroid.x - contentPoint.x * newZoom + pan.x,
+                                    y = centroid.y - contentPoint.y * newZoom + pan.y
+                                )
+                                previewZoom = newZoom
+                                previewPan = nextPan.coercePreviewPan(
+                                    zoom = newZoom,
+                                    imageBounds = imageBounds,
+                                    cropRect = currentCropRect
+                                )
+                                // 双指缩放始终属于图片查看层，避免裁剪框跟随手势被误操作。
+                                event.changes.forEach { it.consume() }
+                            } else if (handledMultiTouch) {
+                                // 双指结束后剩下一根手指时，消费掉本轮尾巴，避免突然触发裁剪框拖动。
+                                event.changes.forEach { it.consume() }
+                            } else {
+                                val activeChange = event.changes.firstOrNull { it.pressed } ?: continue
+                                val shouldHandlePreviewPan = shouldHandleSingleFingerPreviewPan(
+                                    touch = activeChange.position,
+                                    cropRect = currentCropRect,
+                                    cropBounds = imageBounds,
+                                    reserveCropBoxResizeGesture = isCropToolSelected
+                                )
+                                if (shouldHandlePreviewPan && event.changes.none { it.isConsumed }) {
+                                    val pan = event.calculatePan()
+                                    if (pan != Offset.Zero) {
+                                        val minimumZoom = calculateMinimumPreviewZoom(
+                                            imageBounds = imageBounds,
+                                            cropRect = currentCropRect
+                                        )
+                                        val safeZoom = previewZoom.coerceIn(minimumZoom, MAX_PREVIEW_ZOOM)
+                                        if (safeZoom != previewZoom) {
+                                            previewZoom = safeZoom
+                                        }
+                                        previewPan = (previewPan + pan).coercePreviewPan(
+                                            zoom = safeZoom,
+                                            imageBounds = imageBounds,
+                                            cropRect = currentCropRect
+                                        )
+                                        handledPreviewGesture = true
+                                        // 单指拖动用于移动图片预览，裁剪框边角区域仍保留给缩放裁剪框。
+                                        event.changes.forEach { it.consume() }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 },
             contentAlignment = Alignment.Center
         ) {
-            if (bitmap != null && !imageLayerBounds.isEmpty) {
-                val imageLayerWidth = with(density) { imageLayerBounds.width.toDp() }
-                val imageLayerHeight = with(density) { imageLayerBounds.height.toDp() }
-                Image(
-                    bitmap = bitmap!!.asImageBitmap(),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .offset {
-                            IntOffset(
-                                x = imageLayerBounds.left.roundToInt(),
-                                y = imageLayerBounds.top.roundToInt()
-                            )
-                        }
-                        .size(width = imageLayerWidth, height = imageLayerHeight)
-                        .graphicsLayer {
-                            // 预览图合并镜像、90 度旋转和刻度尺微调，裁剪框保持在屏幕坐标系中便于继续拖拽。
-                            scaleX = if (isImageMirrored) -imageCoverScale else imageCoverScale
-                            scaleY = imageCoverScale
-                            rotationZ = rightAngleRotationDegrees.toFloat() + rotateAngle
-                        },
-                    contentScale = ContentScale.Fit,
-                    colorFilter = previewColorMatrix?.let { ColorFilter.colorMatrix(it) }
-                )
-            } else {
-                Text(text = "图片加载中...")
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        // 查看缩放只作用在图片预览层，裁剪框保持独立覆盖，避免边框和触控范围被放大。
+                        transformOrigin = TransformOrigin(0F, 0F)
+                        scaleX = previewZoom
+                        scaleY = previewZoom
+                        translationX = previewPan.x
+                        translationY = previewPan.y
+                    }
+            ) {
+                if (bitmap != null && !imageLayerBounds.isEmpty) {
+                    val imageLayerWidth = with(density) { imageLayerBounds.width.toDp() }
+                    val imageLayerHeight = with(density) { imageLayerBounds.height.toDp() }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset {
+                                IntOffset(
+                                    x = imageLayerBounds.left.roundToInt(),
+                                    y = imageLayerBounds.top.roundToInt()
+                                )
+                            }
+                            .size(width = imageLayerWidth, height = imageLayerHeight)
+                            .graphicsLayer {
+                                // 预览图合并镜像、90 度旋转和刻度尺微调，裁剪框保持在屏幕坐标系中便于继续拖拽。
+                                scaleX = if (isImageMirrored) -imageCoverScale else imageCoverScale
+                                scaleY = imageCoverScale
+                                rotationZ = rightAngleRotationDegrees.toFloat() + rotateAngle
+                            }
+                    ) {
+                        Image(
+                            bitmap = bitmap!!.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
+                            colorFilter = previewColorMatrix?.let { ColorFilter.colorMatrix(it) }
+                        )
+                        RegionPreviewTileImage(
+                            tile = regionTile,
+                            colorFilter = previewColorMatrix?.let { ColorFilter.colorMatrix(it) }
+                        )
+                    }
+                } else {
+                    Text(text = "图片加载中...")
+                }
             }
 
             ResizableCropBox(
@@ -418,6 +634,20 @@ fun EditImagePage(sourceUri: Uri?) {
             }
         )
     }
+
+    if (showDiscardConfirmDialog) {
+        DiscardEditConfirmDialog(
+            onConfirmDiscard = {
+                showDiscardConfirmDialog = false
+                Log.d(TAG, "用户确认不保存修改并离开编辑页")
+                context.finishActivity()
+            },
+            onContinueEdit = {
+                showDiscardConfirmDialog = false
+                Log.d(TAG, "用户取消离开，继续编辑")
+            }
+        )
+    }
 }
 
 private enum class EditImageTool(
@@ -477,6 +707,252 @@ private data class EditImageAdjustments(
 
 private fun formatAdjustmentValue(value: Int): String {
     return if (value > 0) "+$value" else value.toString()
+}
+
+@Composable
+private fun RegionPreviewTileImage(
+    tile: ImageRegionTile?,
+    colorFilter: ColorFilter?
+) {
+    if (tile == null || tile.bitmap.isRecycled) {
+        return
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val rect = tile.normalizedRect
+        Image(
+            bitmap = tile.bitmap.asImageBitmap(),
+            contentDescription = null,
+            modifier = Modifier
+                .offset(x = maxWidth * rect.left, y = maxHeight * rect.top)
+                .size(
+                    width = maxWidth * rect.width,
+                    height = maxHeight * rect.height
+                ),
+            contentScale = ContentScale.FillBounds,
+            // 高清分块同样应用滤镜/调节矩阵，避免放大查看时色彩和采样预览不一致。
+            colorFilter = colorFilter
+        )
+    }
+}
+
+@Composable
+private fun DiscardEditConfirmDialog(
+    onConfirmDiscard: () -> Unit,
+    onContinueEdit: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onContinueEdit,
+        containerColor = Color(0xFF18181B),
+        title = {
+            Text(
+                text = "不保存修改？",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                text = "当前编辑内容尚未保存，确认返回将丢失这些修改。",
+                color = Color(0xFFD1D5DB),
+                fontSize = 14.sp,
+                lineHeight = 20.sp
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirmDiscard) {
+                Text(text = "确认", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onContinueEdit) {
+                Text(text = "继续编辑", color = Color(0xFF9CA3AF), fontWeight = FontWeight.Bold)
+            }
+        }
+    )
+}
+
+private fun buildRegionTileRequest(
+    sourceUri: Uri?,
+    zoom: Float,
+    pan: Offset,
+    containerSize: IntSize,
+    imageLayerBounds: Rect
+): ImageRegionTileRequest? {
+    if (
+        sourceUri == null ||
+        zoom < ORIGINAL_TILE_ZOOM_THRESHOLD ||
+        containerSize.width <= 0 ||
+        containerSize.height <= 0 ||
+        imageLayerBounds.isEmpty
+    ) {
+        return null
+    }
+
+    val visibleViewport = Rect(
+        left = -pan.x / zoom,
+        top = -pan.y / zoom,
+        right = (containerSize.width - pan.x) / zoom,
+        bottom = (containerSize.height - pan.y) / zoom
+    )
+    val visibleImageRect = visibleViewport.intersectOrNull(imageLayerBounds) ?: return null
+    val normalizedRect = Rect(
+        left = ((visibleImageRect.left - imageLayerBounds.left) / imageLayerBounds.width).coerceIn(0F, 1F),
+        top = ((visibleImageRect.top - imageLayerBounds.top) / imageLayerBounds.height).coerceIn(0F, 1F),
+        right = ((visibleImageRect.right - imageLayerBounds.left) / imageLayerBounds.width).coerceIn(0F, 1F),
+        bottom = ((visibleImageRect.bottom - imageLayerBounds.top) / imageLayerBounds.height).coerceIn(0F, 1F)
+    ).quantizeForTile()
+
+    if (normalizedRect.width <= 0.001F || normalizedRect.height <= 0.001F) {
+        return null
+    }
+    return ImageRegionTileRequest(
+        sourceUri = sourceUri,
+        normalizedRect = normalizedRect
+    )
+}
+
+private fun calculateMinimumPreviewZoom(
+    imageBounds: Rect,
+    cropRect: Rect
+): Float {
+    if (imageBounds.isEmpty || imageBounds.width <= 0F || imageBounds.height <= 0F) {
+        return 1F
+    }
+
+    val targetCropRect = if (!cropRect.isEmpty) cropRect else imageBounds
+    if (targetCropRect.isEmpty || targetCropRect.width <= 0F || targetCropRect.height <= 0F) {
+        return 1F
+    }
+
+    // 当裁剪框和图片等大时，最小缩放自然是 1；裁剪框变小时才允许缩到 0.5 倍查看。
+    val zoomForWidth = targetCropRect.width / imageBounds.width
+    val zoomForHeight = targetCropRect.height / imageBounds.height
+    return maxOf(MIN_PREVIEW_ZOOM, zoomForWidth, zoomForHeight)
+        .coerceIn(MIN_PREVIEW_ZOOM, MAX_PREVIEW_ZOOM)
+}
+
+private fun Offset.coercePreviewPan(
+    zoom: Float,
+    imageBounds: Rect,
+    cropRect: Rect
+): Offset {
+    if (imageBounds.isEmpty || imageBounds.width <= 0F || imageBounds.height <= 0F || zoom <= 0F) {
+        return Offset.Zero
+    }
+
+    val targetCropRect = if (!cropRect.isEmpty) cropRect else imageBounds
+    if (targetCropRect.isEmpty) {
+        return Offset.Zero
+    }
+
+    val minX = targetCropRect.right - imageBounds.right * zoom
+    val maxX = targetCropRect.left - imageBounds.left * zoom
+    val minY = targetCropRect.bottom - imageBounds.bottom * zoom
+    val maxY = targetCropRect.top - imageBounds.top * zoom
+
+    fun coerceAxis(value: Float, minValue: Float, maxValue: Float): Float {
+        return if (minValue <= maxValue) {
+            value.coerceIn(minValue, maxValue)
+        } else {
+            // 理论上最小缩放会避免图片小于裁剪框；这里保底居中，防止异常尺寸导致跳动。
+            (minValue + maxValue) / 2F
+        }
+    }
+
+    return Offset(
+        x = coerceAxis(x, minX, maxX),
+        y = coerceAxis(y, minY, maxY)
+    )
+}
+
+private fun Rect.transformByPreviewGesture(
+    zoom: Float,
+    pan: Offset
+): Rect {
+    if (isEmpty || zoom <= 0F) {
+        return Rect.Zero
+    }
+    return Rect(
+        left = left * zoom + pan.x,
+        top = top * zoom + pan.y,
+        right = right * zoom + pan.x,
+        bottom = bottom * zoom + pan.y
+    )
+}
+
+private fun shouldHandleSingleFingerPreviewPan(
+    touch: Offset,
+    cropRect: Rect,
+    cropBounds: Rect,
+    reserveCropBoxResizeGesture: Boolean
+): Boolean {
+    if (!reserveCropBoxResizeGesture || cropRect.isEmpty || cropBounds.isEmpty) {
+        return true
+    }
+
+    // 单指拖动默认移动图片；只有命中裁剪框可缩放区域时，才把手势留给裁剪框组件。
+    return !touch.isInCropResizeGestureArea(
+        rect = cropRect,
+        bounds = cropBounds
+    )
+}
+
+private fun Offset.isInCropResizeGestureArea(
+    rect: Rect,
+    bounds: Rect
+): Boolean {
+    val topLeft = Offset(rect.left, rect.top)
+    val topRight = Offset(rect.right, rect.top)
+    val bottomLeft = Offset(rect.left, rect.bottom)
+    val bottomRight = Offset(rect.right, rect.bottom)
+    if (
+        distanceTo(topLeft) <= CROP_CORNER_TOUCH_RADIUS ||
+        distanceTo(topRight) <= CROP_CORNER_TOUCH_RADIUS ||
+        distanceTo(bottomLeft) <= CROP_CORNER_TOUCH_RADIUS ||
+        distanceTo(bottomRight) <= CROP_CORNER_TOUCH_RADIUS
+    ) {
+        return true
+    }
+
+    val isMoveLocked = rect.width >= bounds.width || rect.height >= bounds.height
+    if (!isMoveLocked || !rect.contains(this)) {
+        return false
+    }
+
+    val nearLeft = abs(x - rect.left) <= CROP_EDGE_RESIZE_TOUCH_INSET
+    val nearRight = abs(x - rect.right) <= CROP_EDGE_RESIZE_TOUCH_INSET
+    val nearTop = abs(y - rect.top) <= CROP_EDGE_RESIZE_TOUCH_INSET
+    val nearBottom = abs(y - rect.bottom) <= CROP_EDGE_RESIZE_TOUCH_INSET
+    return nearLeft || nearRight || nearTop || nearBottom
+}
+
+private fun Offset.distanceTo(other: Offset): Float {
+    val dx = x - other.x
+    val dy = y - other.y
+    return kotlin.math.sqrt(dx * dx + dy * dy)
+}
+
+private fun Rect.intersectOrNull(other: Rect): Rect? {
+    val left = maxOf(this.left, other.left)
+    val top = maxOf(this.top, other.top)
+    val right = minOf(this.right, other.right)
+    val bottom = minOf(this.bottom, other.bottom)
+    if (right <= left || bottom <= top) {
+        return null
+    }
+    return Rect(left = left, top = top, right = right, bottom = bottom)
+}
+
+private fun Rect.quantizeForTile(): Rect {
+    fun quantize(value: Float): Float = (value * 1000F).roundToInt() / 1000F
+    return Rect(
+        left = quantize(left),
+        top = quantize(top),
+        right = quantize(right),
+        bottom = quantize(bottom)
+    )
 }
 
 @Composable
@@ -578,7 +1054,7 @@ private fun CropRotatePanel(
             }
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         CropOrientationSelector(
             selectedOrientation = selectedCropOrientation,
@@ -785,7 +1261,7 @@ private fun AdjustEditorContent(
             }
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         LazyRow(
             modifier = Modifier.fillMaxWidth(),

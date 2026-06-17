@@ -101,11 +101,11 @@ fun ResizableCropBox(
                     dragMode = DragMode.None
                 },
                 onDrag = { change, dragAmount ->
-                    // 裁剪框手势自己消费拖动，避免和外层可能存在的图片预览手势互相干扰。
-                    change.consume()
-                    if (cropBounds.isEmpty) {
+                    if (cropBounds.isEmpty || dragMode == DragMode.None) {
                         return@detectDragGestures
                     }
+                    // 只有命中裁剪框移动/缩放区域时才消费拖动，未命中的单指拖动交给外层图片预览。
+                    change.consume()
                     val safeMinSize = minSize.coerceAtMost(min(cropBounds.width, cropBounds.height))
                     val newCropRect = when (dragMode) {
                         DragMode.Move -> {
@@ -124,7 +124,7 @@ fun ResizableCropBox(
                             )
                         }
                         DragMode.None -> cropRect
-                     }
+                    }
                     if (newCropRect != cropRect) {
                         // 用户真实拖动后通知页面，便于外层点亮裁剪按钮。
                         cropRect = newCropRect

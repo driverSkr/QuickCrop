@@ -42,7 +42,13 @@ object ImagePreviewDecoder {
             )
             Log.d(TAG, "预览图采样解码: $uri, 原始=${bounds.width}x${bounds.height}, sampleSize=$sampleSize")
 
-            decodeSampledBitmap(context = context, uri = uri, bounds = bounds, sampleSize = sampleSize)
+            val previewBitmap = decodeSampledBitmap(context = context, uri = uri, bounds = bounds, sampleSize = sampleSize)
+                ?: return null
+            // 初始化预览时自动按 EXIF 方向摆正，后续裁剪和保存都基于摆正后的视觉坐标。
+            ImageExifUtils.correctBitmapOrientation(
+                bitmap = previewBitmap,
+                orientation = ImageExifUtils.readOrientation(context, uri)
+            )
         }.onFailure { throwable ->
             Log.e(TAG, "预览图解码失败: $uri", throwable)
         }.getOrNull()
@@ -85,6 +91,16 @@ object ImagePreviewDecoder {
         bounds: ImageBounds,
         sampleSize: Int
     ): Bitmap? {
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            BitmapFactory.decodeStream(inputStream, null, options)
+        }?.let { bitmap ->
+            return bitmap
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             runCatching {
                 val targetWidth = max(1, bounds.width / sampleSize)
@@ -100,14 +116,7 @@ object ImagePreviewDecoder {
                 Log.e(TAG, "ImageDecoder 解码预览图失败，尝试 BitmapFactory 兜底: $uri", throwable)
             }
         }
-
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = sampleSize
-            inPreferredConfig = Bitmap.Config.ARGB_8888
-        }
-        return context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            BitmapFactory.decodeStream(inputStream, null, options)
-        }
+        return null
     }
 
     private fun calculateSampleSize(

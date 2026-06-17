@@ -53,12 +53,7 @@ fun EditImageResultPage(sourceUri: Uri?) {
         context.finishActivity()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0C0C0F))
-            .statusBarsPadding()
-    ) {
+    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0C0C0F)).statusBarsPadding()) {
         ExportSuccessPanel(
             exportedUri = sourceUri,
             onBackHome = {
@@ -107,9 +102,7 @@ private fun ExportSuccessPanel(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(260.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color(0xFF18181B)),
+                .height(450.dp),
             contentAlignment = Alignment.Center
         ) {
             if (exportedBitmap != null) {

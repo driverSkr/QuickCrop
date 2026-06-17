@@ -61,6 +61,7 @@ dependencies {
     implementation(libs.coil3.compose)
     implementation(libs.material)
     implementation(libs.androidx.activity)
+    implementation(libs.androidx.exifinterface)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
