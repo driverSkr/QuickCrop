@@ -87,7 +87,7 @@ import com.ethan.quickcrop.custom.NumericValueIndicator
 import com.ethan.quickcrop.custom.rememberArcValueScaleState
 import com.ethan.quickcrop.extension.finishActivity
 import com.ethan.quickcrop.ui.edit.image.view.ResizableCropBox
-import com.ethan.quickcrop.ui.edit.image.EditImageResultActivity
+import com.ethan.quickcrop.ui.edit.image.ImageEditResultActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -104,11 +104,11 @@ private const val FULL_ROTATION_DEGREES = 360
 private const val MIN_PREVIEW_ZOOM = 0.5F
 private const val MAX_PREVIEW_ZOOM = 5F
 private const val ORIGINAL_TILE_ZOOM_THRESHOLD = 1.6F
-private const val CROP_CORNER_TOUCH_RADIUS = 60F
+private const val CROP_CORNER_TOUCH_RADIUS = 96F
 private const val CROP_EDGE_RESIZE_TOUCH_INSET = 72F
 
 @Composable
-fun EditImagePage(sourceUri: Uri?) {
+fun ImageEditPage(sourceUri: Uri?) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
@@ -342,8 +342,8 @@ fun EditImagePage(sourceUri: Uri?) {
             result.onSuccess { outputUri ->
                 Log.d(TAG, "图片编辑结果保存成功，跳转预览页: $outputUri")
                 context.startActivity(
-                    Intent(context, EditImageResultActivity::class.java).apply {
-                        putExtra(EditImageResultActivity.EXTRA_IMAGE_URI, outputUri.toString())
+                    Intent(context, ImageEditResultActivity::class.java).apply {
+                        putExtra(ImageEditResultActivity.EXTRA_IMAGE_URI, outputUri.toString())
                     }
                 )
             }.onFailure { throwable ->

@@ -13,7 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.ethan.base.BaseActivity
 import com.ethan.quickcrop.ui.edit.video.CropVideoActivity
-import com.ethan.quickcrop.ui.edit.image.EditImageActivity
+import com.ethan.quickcrop.ui.edit.image.ImageEditActivity
 import com.ethan.quickcrop.ui.media.page.MediaPickPage
 import com.ethan.quickcrop.ui.theme.QuickCropTheme
 import java.io.File
@@ -47,8 +47,8 @@ class MediaPickActivity : BaseActivity() {
         // 传递导入缓存文件给裁剪页，保留原相册代码“先校验/转码/落缓存，再进入后续流程”的能力。
         val imageUri = Uri.fromFile(File(importPath))
         val started = startActivitySafely(
-            Intent(this, EditImageActivity::class.java).apply {
-                putExtra(EditImageActivity.EXTRA_IMAGE_URI, imageUri.toString())
+            Intent(this, ImageEditActivity::class.java).apply {
+                putExtra(ImageEditActivity.EXTRA_IMAGE_URI, imageUri.toString())
             }
         )
         if (started) {

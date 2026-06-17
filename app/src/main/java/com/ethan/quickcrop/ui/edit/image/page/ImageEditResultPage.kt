@@ -43,10 +43,10 @@ import com.ethan.quickcrop.ui.media.MediaPickActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private const val TAG = "EditImageResultPage"
+private const val TAG = "ImageEditResultPage"
 
 @Composable
-fun EditImageResultPage(sourceUri: Uri?) {
+fun ImageEditResultPage(sourceUri: Uri?) {
     val context = LocalContext.current
 
     BackHandler(true) {
@@ -138,7 +138,7 @@ private fun ExportSuccessPanel(
             fontSize = 14.sp,
             modifier = Modifier.padding(top = 10.dp, bottom = 26.dp)
         )
-        PrimaryBottomButton(text = "返回首页", onClick = onBackHome)
+        PrimaryBottomButton(onClick = onBackHome)
         Spacer(modifier = Modifier.height(12.dp))
         Box(
             modifier = Modifier
@@ -155,7 +155,7 @@ private fun ExportSuccessPanel(
 }
 
 @Composable
-private fun PrimaryBottomButton(text: String, onClick: () -> Unit) {
+private fun PrimaryBottomButton(onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -165,7 +165,7 @@ private fun PrimaryBottomButton(text: String, onClick: () -> Unit) {
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text(text = "返回首页", color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
     }
 }
 

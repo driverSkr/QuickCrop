@@ -89,7 +89,7 @@ private fun HomePage(
 
         FeatureEntranceCard(
             title = "图片编辑",
-            subtitle = "裁剪 · 滤镜 · 旋转 · 文字",
+            subtitle = "裁剪 · 滤镜 · 旋转 · 调节",
             iconRes = R.drawable.fa_image,
             gradient = Brush.linearGradient(listOf(Color(0xFF7C3AED), Color(0xFFDB2777))),
             onClick = onImageClick

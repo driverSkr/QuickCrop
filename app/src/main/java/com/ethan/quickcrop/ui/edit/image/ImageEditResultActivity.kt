@@ -4,16 +4,16 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import com.ethan.base.BaseActivity
-import com.ethan.quickcrop.ui.edit.image.page.EditImagePage
+import com.ethan.quickcrop.ui.edit.image.page.ImageEditResultPage
 import com.ethan.quickcrop.ui.theme.QuickCropTheme
 
-class EditImageActivity : BaseActivity() {
+class ImageEditResultActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val sourceUri = getStringExtra(EXTRA_IMAGE_URI)?.let(Uri::parse)
+        val imageUri = getStringExtra(EXTRA_IMAGE_URI)?.let(Uri::parse)
         setContent {
             QuickCropTheme {
-                EditImagePage(sourceUri = sourceUri)
+                ImageEditResultPage(sourceUri = imageUri)
             }
         }
     }

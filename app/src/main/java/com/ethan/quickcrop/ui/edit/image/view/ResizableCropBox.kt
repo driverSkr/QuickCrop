@@ -55,7 +55,7 @@ fun ResizableCropBox(
     // 拖拽模式
     var dragMode by remember { mutableStateOf(DragMode.None) }
     // 边角触摸半径
-    val cornerTouchRadius = 60f
+    val cornerTouchRadius = 96f
     // 初始裁剪框贴住图片时，边缘也要能触发缩放，避免用户误以为裁剪框被锁死。
     val edgeResizeTouchInset = 72f
     // 角标长度
