@@ -1,6 +1,5 @@
 package com.ethan.quickcrop.ui.edit.image.page
 
-import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
@@ -35,6 +34,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ethan.base.BaseActivity
 import com.ethan.quickcrop.MainActivity
 import com.ethan.quickcrop.R
 import com.ethan.quickcrop.core.image.ImagePreviewDecoder
@@ -57,8 +57,10 @@ fun ImageEditResultPage(sourceUri: Uri?) {
         ExportSuccessPanel(
             exportedUri = sourceUri,
             onBackHome = {
-                context.startActivity(
-                    Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                BaseActivity.navigateTo(
+                    context = context,
+                    targetActivity = MainActivity::class.java,
+                    flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
                 )
                 context.finishActivity()
             },

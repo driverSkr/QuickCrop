@@ -1,6 +1,5 @@
 package com.ethan.quickcrop.ui.edit.video
 
-import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -259,7 +258,11 @@ private fun VideoEditorPage(videoUri: Uri?) {
                     exportResolution = exportResolution,
                     estimateSizeMb = exportEstimate,
                     onBackHome = {
-                        context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP))
+                        BaseActivity.navigateTo(
+                            context = context,
+                            targetActivity = MainActivity::class.java,
+                            flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        )
                         context.finishActivity()
                     },
                     onContinueEdit = {

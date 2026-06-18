@@ -1,6 +1,5 @@
 package com.ethan.quickcrop.ui.edit.image.page
 
-import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
@@ -74,6 +73,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ethan.base.BaseActivity
 import com.ethan.quickcrop.R
 import com.ethan.quickcrop.core.image.ImageEditSaveProcessor
 import com.ethan.quickcrop.core.image.ImageEditSaveRequest
@@ -341,11 +341,12 @@ fun ImageEditPage(sourceUri: Uri?) {
             isSaving = false
             result.onSuccess { outputUri ->
                 Log.d(TAG, "图片编辑结果保存成功，跳转预览页: $outputUri")
-                context.startActivity(
-                    Intent(context, ImageEditResultActivity::class.java).apply {
-                        putExtra(ImageEditResultActivity.EXTRA_IMAGE_URI, outputUri.toString())
-                    }
-                )
+                BaseActivity.navigateTo(
+                    context = context,
+                    targetActivity = ImageEditResultActivity::class.java
+                ) {
+                    putExtra(ImageEditResultActivity.EXTRA_IMAGE_URI, outputUri.toString())
+                }
             }.onFailure { throwable ->
                 Log.e(TAG, "图片编辑结果保存失败", throwable)
                 Toast.makeText(context, "保存失败，请稍后重试", Toast.LENGTH_SHORT).show()

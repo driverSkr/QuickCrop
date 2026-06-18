@@ -1,9 +1,6 @@
 package com.ethan.quickcrop
 
-import android.content.Intent
 import android.os.Bundle
-import android.util.Log
-import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -52,17 +49,10 @@ class MainActivity : BaseActivity() {
                 HomePage(
                     onImageClick = { MediaPickActivity.launch(this@MainActivity, MediaPickType.IMAGE) },
                     onVideoClick = { MediaPickActivity.launch(this@MainActivity, MediaPickType.VIDEO) },
-                    onAudioClick = { openPlaceholderEditor(AudioEditActivity::class.java, "音频编辑") }
+                    onAudioClick = { navigateTo<AudioEditActivity>() },
+                    onSettingsClick = { navigateTo<SettingsActivity>() }
                 )
             }
-        }
-    }
-
-    private fun openPlaceholderEditor(targetClass: Class<*>, moduleName: String) {
-        val started = startActivitySafely(Intent(this, targetClass))
-        if (!started) {
-            Log.w(TAG, "打开${moduleName}入口失败")
-            Toast.makeText(this, "${moduleName}暂时无法打开", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -75,7 +65,8 @@ class MainActivity : BaseActivity() {
 private fun HomePage(
     onImageClick: () -> Unit,
     onVideoClick: () -> Unit,
-    onAudioClick: () -> Unit
+    onAudioClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -85,7 +76,7 @@ private fun HomePage(
             .padding(horizontal = 20.dp)
             .padding(top = 52.dp, bottom = 20.dp)
     ) {
-        HomeTopBar()
+        HomeTopBar(onSettingsClick = onSettingsClick)
         Spacer(modifier = Modifier.height(24.dp))
 
         FeatureEntranceCard(
@@ -106,7 +97,7 @@ private fun HomePage(
         Spacer(modifier = Modifier.height(12.dp))
         FeatureEntranceCard(
             title = "音频编辑",
-            subtitle = "裁切 · 混音 · 淡入淡出",
+            subtitle = "录音 · 波形 · 裁剪 · 标记",
             iconRes = R.drawable.fa_music,
             gradient = Brush.linearGradient(listOf(Color(0xFF16A34A), Color(0xFF0D9488))),
             onClick = onAudioClick
@@ -118,7 +109,7 @@ private fun HomePage(
 }
 
 @Composable
-private fun HomeTopBar() {
+private fun HomeTopBar(onSettingsClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -142,9 +133,13 @@ private fun HomeTopBar() {
             }
         }
 
-        FaIcon(iconRes = R.drawable.fa_cog, tint = Color(0xFF9CA3AF), modifier = Modifier.size(18.dp).clickable{
-
-        })
+        FaIcon(
+            iconRes = R.drawable.fa_cog,
+            tint = Color(0xFF9CA3AF),
+            modifier = Modifier
+                .size(18.dp)
+                .clickable { onSettingsClick() }
+        )
     }
 }
 

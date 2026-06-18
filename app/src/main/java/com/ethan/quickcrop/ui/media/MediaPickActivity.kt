@@ -1,11 +1,8 @@
 package com.ethan.quickcrop.ui.media
 
-import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
@@ -46,11 +43,9 @@ class MediaPickActivity : BaseActivity() {
     private fun openCropImagePage(importPath: String) {
         // 传递导入缓存文件给裁剪页，保留原相册代码“先校验/转码/落缓存，再进入后续流程”的能力。
         val imageUri = Uri.fromFile(File(importPath))
-        val started = startActivitySafely(
-            Intent(this, ImageEditActivity::class.java).apply {
-                putExtra(ImageEditActivity.EXTRA_IMAGE_URI, imageUri.toString())
-            }
-        )
+        val started = navigateTo<ImageEditActivity> {
+            putExtra(ImageEditActivity.EXTRA_IMAGE_URI, imageUri.toString())
+        }
         if (started) {
             finish()
         }
@@ -58,31 +53,23 @@ class MediaPickActivity : BaseActivity() {
 
     private fun openCropVideoPage(videoUri: Uri) {
         // 视频模块当前只实现 UI 入口，后续接入剪辑链路时可在这里传递视频 Uri 或缓存路径。
-        val started = startActivitySafely(
-            Intent(this, CropVideoActivity::class.java).apply {
-                putExtra(CropVideoActivity.EXTRA_VIDEO_URI, videoUri.toString())
-            }
-        )
+        val started = navigateTo<CropVideoActivity> {
+            putExtra(CropVideoActivity.EXTRA_VIDEO_URI, videoUri.toString())
+        }
         if (started) {
             finish()
         }
     }
 
     companion object {
-        private const val TAG = "MediaPickActivity"
         private const val EXTRA_PICK_TYPE = "extra_pick_type"
 
         fun launch(context: Context, pickType: MediaPickType = MediaPickType.IMAGE) {
-            val intent = Intent(context, MediaPickActivity::class.java).apply {
+            BaseActivity.navigateTo(
+                context = context,
+                targetActivity = MediaPickActivity::class.java
+            ) {
                 putExtra(EXTRA_PICK_TYPE, pickType.name)
-                if (context !is Activity) {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            }
-            runCatching {
-                context.startActivity(intent)
-            }.onFailure { throwable ->
-                Log.w(TAG, "启动自定义相册失败", throwable)
             }
         }
     }

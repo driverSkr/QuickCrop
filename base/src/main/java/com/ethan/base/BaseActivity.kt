@@ -14,6 +14,7 @@ import android.widget.Toast
 import androidx.annotation.ColorInt
 import androidx.annotation.LayoutRes
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -102,19 +103,25 @@ abstract class BaseActivity : AppCompatActivity {
     }
 
     /**
-     * 泛型方式启动 App 内 Activity。
+     * 从 BaseActivity 子类跳转到 App 内 Activity。
      *
      * 示例：
-     * startActivity<DetailActivity> {
+     * navigateTo<DetailActivity> {
      *     putExtra("id", id)
      * }
      */
-    protected inline fun <reified T : Activity> startActivity(
+    protected inline fun <reified T : Activity> navigateTo(
+        flags: Int = 0,
         options: Bundle? = null,
-        configure: Intent.() -> Unit = {}
+        noinline configure: Intent.() -> Unit = {}
     ): Boolean {
-        val intent = Intent(this, T::class.java).apply(configure)
-        return startActivitySafely(intent, options)
+        return Companion.navigateTo(
+            context = this,
+            targetActivity = T::class.java,
+            flags = flags,
+            options = options,
+            configure = configure
+        )
     }
 
     /**
@@ -249,8 +256,39 @@ abstract class BaseActivity : AppCompatActivity {
         }
     }
 
-    private companion object {
-        const val DEFAULT_CLICK_INTERVAL_MS = 600L
-        const val LIGHT_SYSTEM_BAR_ICON_THRESHOLD = 0.5
+    companion object {
+        private const val TAG = "BaseActivity"
+        private const val DEFAULT_CLICK_INTERVAL_MS = 600L
+        private const val LIGHT_SYSTEM_BAR_ICON_THRESHOLD = 0.5
+
+        /**
+         * 公共 Activity 跳转入口。
+         *
+         * Compose 页面、普通 Context 和 BaseActivity 子类都可以复用。非 Activity Context
+         * 会自动补充 NEW_TASK；跳转失败时统一记录日志并返回 false，避免页面直接崩溃。
+         */
+        fun navigateTo(
+            context: Context,
+            targetActivity: Class<out Activity>,
+            flags: Int = 0,
+            options: Bundle? = null,
+            configure: Intent.() -> Unit = {}
+        ): Boolean {
+            val intent = Intent(context, targetActivity).apply {
+                if (context !is Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                if (flags != 0) {
+                    addFlags(flags)
+                }
+                configure()
+            }
+            return runCatching {
+                ContextCompat.startActivity(context, intent, options)
+                true
+            }.onFailure { throwable ->
+                Log.e(TAG, "Activity 跳转失败: ${targetActivity.name}", throwable)
+            }.getOrDefault(false)
+        }
     }
 }
