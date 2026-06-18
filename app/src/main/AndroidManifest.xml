@@ -22,13 +22,16 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.QuickCrop">
         <activity
+            android:name=".ui.settings.SettingsActivity"
+            android:exported="false" />
+        <activity
             android:name=".ui.edit.image.ImageEditResultActivity"
             android:exported="false" />
         <activity
             android:name=".ui.edit.image.ImageEditActivity"
             android:exported="false" />
         <activity
-            android:name=".ui.edit.audio.AudioEditorActivity"
+            android:name=".ui.edit.audio.AudioEditActivity"
             android:exported="false" />
         <activity
             android:name=".ui.edit.video.CropVideoActivity"
