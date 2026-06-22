@@ -104,6 +104,9 @@ import kotlin.math.abs
 private const val TAG = "AudioEditPage"
 private const val MIN_TRIM_DURATION_MS = 500L
 
+/**
+ * 音频编辑页入口，负责连接录音服务、处理权限申请、页面退出确认和最终导出。
+ */
 @Composable
 fun AudioEditPage(
     onExportCompleted: (Uri) -> Unit
@@ -111,6 +114,7 @@ fun AudioEditPage(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val audioService = rememberAudioRecordingService()
+    // 服务尚未绑定完成时使用空状态兜底，避免页面首次组合时状态流为空。
     val fallbackState = remember { MutableStateFlow(AudioRecordingState()) }
     val stateFlow = audioService?.state ?: fallbackState
     val recordingState by stateFlow.collectAsState()
@@ -122,6 +126,7 @@ fun AudioEditPage(
     var trimStartFraction by remember { mutableFloatStateOf(0F) }
     var trimEndFraction by remember { mutableFloatStateOf(1F) }
 
+    // 统一的导出入口：校验源文件后在 IO 线程裁剪并写入系统 Music 目录。
     val performExport: () -> Unit = {
         val sourceFile = recordingState.outputFile
         if (sourceFile == null || !sourceFile.exists()) {
@@ -153,6 +158,7 @@ fun AudioEditPage(
         }
     }
 
+    // 同一个权限启动器同时处理录音权限和 Android 9 及以下的写存储权限。
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissionResult ->
@@ -184,6 +190,7 @@ fun AudioEditPage(
     }
 
     fun requestStartRecording() {
+        // 已授权时直接启动服务，未授权则记录待执行动作，等待权限回调继续。
         val hasAudioPermission = ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.RECORD_AUDIO
@@ -207,6 +214,7 @@ fun AudioEditPage(
     }
 
     fun requestExport() {
+        // Android 10 起通过 MediaStore 写入音乐目录，旧系统才需要额外申请写存储权限。
         val requiresLegacyStoragePermission = Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
             ContextCompat.checkSelfPermission(
                 context,
@@ -220,6 +228,7 @@ fun AudioEditPage(
         }
     }
 
+    // 有录音内容或录音正在进行时，返回前需要二次确认，避免误删临时文件。
     val hasUnsavedRecording = recordingState.status == AudioRecordingStatus.Recording ||
         recordingState.status == AudioRecordingStatus.Paused ||
         recordingState.status == AudioRecordingStatus.Completed
@@ -232,16 +241,19 @@ fun AudioEditPage(
         }
     }
 
+    // 系统返回键与顶部返回按钮走同一套退出确认逻辑。
     BackHandler(true) {
         requestLeavePage()
     }
 
+    // 服务层错误以 Toast 暴露给用户，避免错误状态只停留在日志里。
     LaunchedEffect(recordingState.errorMessage) {
         recordingState.errorMessage?.let { message ->
             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         }
     }
 
+    // 新录音文件生成后重置裁剪范围，避免沿用上一段音频的裁剪位置。
     LaunchedEffect(recordingState.outputFile) {
         trimStartFraction = 0F
         trimEndFraction = 1F
@@ -260,6 +272,7 @@ fun AudioEditPage(
             onBack = { requestLeavePage() }
         )
 
+        // 根据录音状态切换主内容，保持页面级状态与业务状态同步。
         AnimatedContent(
             targetState = recordingState.status,
             modifier = Modifier
@@ -318,6 +331,7 @@ fun AudioEditPage(
     }
 
     if (showPermissionDialog) {
+        // 麦克风权限被拒绝后引导用户进入系统设置手动开启。
         AlertDialog(
             onDismissRequest = { showPermissionDialog = false },
             containerColor = Color(0xFF18181B),
@@ -356,6 +370,7 @@ fun AudioEditPage(
     }
 
     if (showDiscardDialog) {
+        // 退出确认会清理录音缓存，避免用户以为临时录音仍可恢复。
         AlertDialog(
             onDismissRequest = { showDiscardDialog = false },
             containerColor = Color(0xFF18181B),
@@ -386,12 +401,16 @@ fun AudioEditPage(
     }
 }
 
+/**
+ * 顶部导航栏，展示返回按钮、当前录音状态标题和录音时长。
+ */
 @Composable
 private fun AudioTopBar(
     status: AudioRecordingStatus,
     durationMs: Long,
     onBack: () -> Unit
 ) {
+    // 完成态用绿色时长强调录音已经可进入导出流程。
     val title = if (status == AudioRecordingStatus.Completed) "录音完成" else "录音"
     val durationColor = if (status == AudioRecordingStatus.Completed) Color(0xFF4ADE80) else Color.White
     Row(
@@ -431,6 +450,9 @@ private fun AudioTopBar(
     }
 }
 
+/**
+ * 空闲或错误状态内容，负责提示当前录音准备状态并提供开始录音入口。
+ */
 @Composable
 private fun AudioIdleContent(
     hasError: Boolean,
@@ -481,6 +503,9 @@ private fun AudioIdleContent(
     }
 }
 
+/**
+ * 录音中内容，展示实时波形、暂停/继续、停止和添加标记等控制。
+ */
 @Composable
 private fun AudioRecordingContent(
     state: AudioRecordingState,
@@ -553,6 +578,7 @@ private fun AudioRecordingContent(
             modifier = Modifier.padding(top = 24.dp)
         )
         if (state.markers.isNotEmpty()) {
+            // 标记数量即时反馈，帮助用户确认点击添加标记已经生效。
             Text(
                 text = "已添加 ${state.markers.size} 个标记",
                 color = Color(0xFF3B82F6),
@@ -563,15 +589,20 @@ private fun AudioRecordingContent(
     }
 }
 
+/**
+ * 录音状态指示器，通过颜色和脉冲动画表达空闲、录制中和暂停状态。
+ */
 @Composable
 private fun RecordingStatusIndicator(status: AudioRecordingStatus) {
     val isRecording = status == AudioRecordingStatus.Recording
     val isPaused = status == AudioRecordingStatus.Paused
+    // 中心圆颜色与业务状态绑定，用户可快速辨认当前是否正在录制。
     val centerColor = when {
         isRecording -> Color(0xFFEF4444)
         isPaused -> Color(0xFFF59E0B)
         else -> Color(0xFF4B5563)
     }
+    // 仅录制中展示外圈脉冲，用无限动画驱动半透明圆扩散。
     val infiniteTransition = rememberInfiniteTransition(label = "recordingPulse")
     val pulse by infiniteTransition.animateFloat(
         initialValue = 0F,
@@ -625,12 +656,16 @@ private fun RecordingStatusIndicator(status: AudioRecordingStatus) {
     }
 }
 
+/**
+ * 实时录音波形面板，绘制当前采样振幅并提示峰值是否过载。
+ */
 @Composable
 private fun LiveWaveformPanel(
     waveform: List<Float>,
     peakDb: Float,
     isRecording: Boolean
 ) {
+    // 接近 0dB 时容易削波，使用红色状态提醒用户降低输入音量。
     val isOverload = peakDb > -3F
     Column(
         modifier = Modifier
@@ -644,6 +679,7 @@ private fun LiveWaveformPanel(
                 .fillMaxWidth()
                 .height(126.dp)
         ) {
+            // 还没有采样数据时使用低幅度占位，避免面板空白。
             val bars = waveform.ifEmpty { List(18) { 0.08F } }
             val gap = size.width / (bars.size * 2F)
             bars.forEachIndexed { index, amplitude ->
@@ -684,6 +720,9 @@ private fun LiveWaveformPanel(
     }
 }
 
+/**
+ * 录音完成后的编辑内容，负责播放预览、裁剪范围调整、标记跳转和导出入口。
+ */
 @Composable
 private fun AudioCompletedContent(
     state: AudioRecordingState,
@@ -700,6 +739,7 @@ private fun AudioCompletedContent(
     var isPlaying by remember { mutableStateOf(false) }
     var playbackPositionMs by remember { mutableLongStateOf(0L) }
     var playerDurationMs by remember { mutableLongStateOf(state.elapsedMs.coerceAtLeast(1L)) }
+    // 源文件变化时重建 ExoPlayer，确保播放的是当前录音文件。
     val player = remember(sourceFile) {
         sourceFile?.takeIf(File::exists)?.let { file ->
             ExoPlayer.Builder(context).build().apply {
@@ -714,6 +754,7 @@ private fun AudioCompletedContent(
         if (player == null) {
             onDispose { }
         } else {
+            // 监听播放器状态，用于同步播放按钮和处理播放结束后的回到裁剪起点。
             val listener = object : Player.Listener {
                 override fun onIsPlayingChanged(isPlayingNow: Boolean) {
                     isPlaying = isPlayingNow
@@ -730,6 +771,7 @@ private fun AudioCompletedContent(
             }
             player.addListener(listener)
             onDispose {
+                // 页面离开或音频源切换时释放播放器，避免后台继续占用音频资源。
                 player.removeListener(listener)
                 player.release()
             }
@@ -738,6 +780,7 @@ private fun AudioCompletedContent(
 
     LaunchedEffect(player, trimStartFraction, trimEndFraction, playerDurationMs) {
         while (true) {
+            // 定时同步播放进度，并在播放越过裁剪终点时自动回到起点。
             val currentPosition = player?.currentPosition ?: 0L
             playbackPositionMs = currentPosition
             val trimEndMs = (playerDurationMs * trimEndFraction).toLong()
@@ -750,6 +793,7 @@ private fun AudioCompletedContent(
     }
 
     fun seekToFraction(fraction: Float) {
+        // 外部传入的是 0-1 的相对位置，这里统一换算为播放器毫秒位置。
         player?.seekTo((playerDurationMs * fraction.coerceIn(0F, 1F)).toLong())
     }
 
@@ -795,6 +839,7 @@ private fun AudioCompletedContent(
             isPlaying = isPlaying,
             onPlayToggle = {
                 player?.let { currentPlayer ->
+                    // 播放只在裁剪区间内进行，当前位置在区间外时先跳回裁剪起点。
                     val trimStartMs = (playerDurationMs * trimStartFraction).toLong()
                     val trimEndMs = (playerDurationMs * trimEndFraction).toLong()
                     if (currentPlayer.isPlaying) {
@@ -819,17 +864,20 @@ private fun AudioCompletedContent(
             endFraction = trimEndFraction,
             onStartChanged = { next ->
                 val minGap = minimumTrimFraction(playerDurationMs)
+                // 起点不能越过终点，并至少保留一段可导出的最小时长。
                 val safeValue = next.coerceIn(0F, trimEndFraction - minGap)
                 onTrimStartChanged(safeValue)
                 seekToFraction(safeValue)
             },
             onEndChanged = { next ->
                 val minGap = minimumTrimFraction(playerDurationMs)
+                // 终点不能早于起点，约束后立即跳转方便用户听到边界位置。
                 val safeValue = next.coerceIn(trimStartFraction + minGap, 1F)
                 onTrimEndChanged(safeValue)
                 seekToFraction(safeValue)
             },
             onDeleteBefore = {
+                // “删除前段”将裁剪起点移动到当前播放头位置。
                 val playheadFraction = (playbackPositionMs.toFloat() / playerDurationMs).coerceIn(0F, 1F)
                 val minGap = minimumTrimFraction(playerDurationMs)
                 val safeValue = playheadFraction.coerceIn(trimStartFraction, trimEndFraction - minGap)
@@ -837,6 +885,7 @@ private fun AudioCompletedContent(
                 seekToFraction(safeValue)
             },
             onDeleteAfter = {
+                // “删除后段”将裁剪终点移动到当前播放头位置。
                 val playheadFraction = (playbackPositionMs.toFloat() / playerDurationMs).coerceIn(0F, 1F)
                 val minGap = minimumTrimFraction(playerDurationMs)
                 val safeValue = playheadFraction.coerceIn(trimStartFraction + minGap, trimEndFraction)
@@ -850,6 +899,7 @@ private fun AudioCompletedContent(
             AudioMarkerPanel(
                 markers = state.markers,
                 onMarkerClick = { marker ->
+                    // 点击标记点直接跳到记录位置，便于快速定位重要片段。
                     player?.seekTo(marker.positionMs.coerceIn(0L, playerDurationMs))
                 }
             )
@@ -881,6 +931,9 @@ private fun AudioCompletedContent(
     }
 }
 
+/**
+ * 播放预览面板，展示文件信息、播放/暂停按钮、进度条和当前播放时间。
+ */
 @Composable
 private fun AudioPreviewPanel(
     fileName: String,
@@ -890,6 +943,7 @@ private fun AudioPreviewPanel(
     onPlayToggle: () -> Unit,
     onSeek: (Float) -> Unit
 ) {
+    // 将毫秒进度转换成 Slider 需要的 0-1 进度值。
     val progress = if (durationMs > 0L) {
         (playbackPositionMs.toFloat() / durationMs).coerceIn(0F, 1F)
     } else {
@@ -967,6 +1021,9 @@ private fun AudioPreviewPanel(
     }
 }
 
+/**
+ * 裁剪控制面板，组合波形拖拽区域、时间信息和快捷删除前/后段按钮。
+ */
 @Composable
 private fun AudioTrimPanel(
     waveform: List<Float>,
@@ -997,6 +1054,7 @@ private fun AudioTrimPanel(
         Spacer(modifier = Modifier.height(12.dp))
         AudioTrimWaveform(
             waveform = waveform,
+            // 播放头位置使用相对比例传入波形画布，避免画布直接依赖毫秒单位。
             playbackFraction = (playbackPositionMs.toFloat() / durationMs.coerceAtLeast(1L)).coerceIn(0F, 1F),
             startFraction = startFraction,
             endFraction = endFraction,
@@ -1012,6 +1070,7 @@ private fun AudioTrimPanel(
                 .padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            // 三段时间分别展示裁剪起点、已选时长和裁剪终点，方便精确确认。
             Text(
                 text = formatShortDuration((durationMs * startFraction).toLong()),
                 color = Color(0xFF6B7280),
@@ -1051,6 +1110,9 @@ private fun AudioTrimPanel(
     }
 }
 
+/**
+ * 可拖拽的裁剪波形，负责绘制采样柱、选区遮罩、左右手柄和播放头。
+ */
 @Composable
 private fun AudioTrimWaveform(
     waveform: List<Float>,
@@ -1062,10 +1124,12 @@ private fun AudioTrimWaveform(
     modifier: Modifier = Modifier
 ) {
     var activeHandle by remember { mutableStateOf(AudioTrimHandle.None) }
+    // 拖拽回调发生在 pointerInput 协程中，使用最新状态避免闭包拿到旧值。
     val latestStartFraction by rememberUpdatedState(startFraction)
     val latestEndFraction by rememberUpdatedState(endFraction)
     val latestOnStartChanged by rememberUpdatedState(onStartChanged)
     val latestOnEndChanged by rememberUpdatedState(onEndChanged)
+    // 波形点数过多时会压缩为固定数量，保证小屏幕上仍能看清每根柱子。
     val bars = remember(waveform) {
         waveform.ifEmpty {
             listOf(0.35F, 0.6F, 0.85F, 0.55F, 0.9F, 0.72F, 0.48F, 0.78F, 0.66F, 0.42F, 0.84F, 0.55F)
@@ -1078,6 +1142,7 @@ private fun AudioTrimWaveform(
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { touch ->
+                        // 根据按下位置离哪个边界更近来决定拖动起点还是终点手柄。
                         val touchFraction = (touch.x / size.width).coerceIn(0F, 1F)
                         activeHandle = if (
                             abs(touchFraction - latestStartFraction) <=
@@ -1092,6 +1157,7 @@ private fun AudioTrimWaveform(
                     onDragCancel = { activeHandle = AudioTrimHandle.None },
                     onDrag = { change, _ ->
                         change.consume()
+                        // 拖拽位置转换为 0-1 的比例后交给上层统一做最小时长约束。
                         val fraction = (change.position.x / size.width).coerceIn(0F, 1F)
                         when (activeHandle) {
                             AudioTrimHandle.Start -> latestOnStartChanged(fraction)
@@ -1105,6 +1171,7 @@ private fun AudioTrimWaveform(
         val selectionLeft = size.width * startFraction
         val selectionRight = size.width * endFraction
         val gap = size.width / (bars.size * 2F)
+        // 先绘制整段波形，选区内外使用不同颜色帮助识别保留片段。
         bars.forEachIndexed { index, amplitude ->
             val x = gap + index * gap * 2F
             val barHeight = size.height * amplitude.coerceIn(0.08F, 0.9F)
@@ -1116,12 +1183,14 @@ private fun AudioTrimWaveform(
                 cap = StrokeCap.Round
             )
         }
+        // 选区底色覆盖在波形上方，突出最终会导出的音频范围。
         drawRoundRect(
             color = Color(0xFF3B82F6).copy(alpha = 0.16F),
             topLeft = Offset(selectionLeft, 0F),
             size = Size((selectionRight - selectionLeft).coerceAtLeast(0F), size.height),
             cornerRadius = CornerRadius(4.dp.toPx())
         )
+        // 左右粗线既是视觉边界，也是用户拖拽的裁剪手柄。
         drawLine(
             color = Color(0xFF3B82F6),
             start = Offset(selectionLeft, 0F),
@@ -1137,6 +1206,7 @@ private fun AudioTrimWaveform(
             cap = StrokeCap.Round
         )
         val playheadX = size.width * playbackFraction
+        // 白色播放头显示当前预览位置，不参与裁剪范围计算。
         drawLine(
             color = Color.White,
             start = Offset(playheadX, 0F),
@@ -1146,6 +1216,9 @@ private fun AudioTrimWaveform(
     }
 }
 
+/**
+ * 标记点列表面板，展示录音期间添加的标记并支持点击跳转。
+ */
 @Composable
 private fun AudioMarkerPanel(
     markers: List<AudioRecordingMarker>,
@@ -1200,6 +1273,9 @@ private fun AudioMarkerPanel(
     }
 }
 
+/**
+ * 裁剪快捷操作按钮，用于一键删除播放头之前或之后的片段。
+ */
 @Composable
 private fun AudioTrimShortcut(
     text: String,
@@ -1231,6 +1307,9 @@ private fun AudioTrimShortcut(
     }
 }
 
+/**
+ * 圆形图标按钮，统一录音、暂停、停止、播放等主要操作的样式。
+ */
 @Composable
 private fun AudioRoundButton(
     iconRes: Int,
@@ -1261,6 +1340,9 @@ private fun AudioRoundButton(
     }
 }
 
+/**
+ * 底部文本操作按钮，承载重新录音和导出这类宽按钮操作。
+ */
 @Composable
 private fun AudioActionButton(
     text: String,
@@ -1287,6 +1369,9 @@ private fun AudioActionButton(
     }
 }
 
+/**
+ * 图标渲染组件，统一加载矢量资源并套用指定颜色。
+ */
 @Composable
 private fun AudioIcon(
     iconRes: Int,
@@ -1302,11 +1387,15 @@ private fun AudioIcon(
     )
 }
 
+/**
+ * 绑定并记住音频录制服务实例，页面退出时自动解绑服务连接。
+ */
 @Composable
 private fun rememberAudioRecordingService(): AudioRecordingService? {
     val context = LocalContext.current
     var service by remember { mutableStateOf<AudioRecordingService?>(null) }
     DisposableEffect(context) {
+        // 通过本地 Binder 获取服务对象，让 Compose 页面可以直接订阅服务状态流。
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
                 service = (binder as? AudioRecordingService.LocalBinder)?.getService()
@@ -1330,6 +1419,7 @@ private fun rememberAudioRecordingService(): AudioRecordingService? {
 
         onDispose {
             if (bound) {
+                // 只在绑定成功后解绑，避免 bindService 失败时再次触发系统异常。
                 runCatching { context.unbindService(connection) }
                     .onFailure { throwable -> Log.w(TAG, "解绑音频录制服务失败", throwable) }
             }
