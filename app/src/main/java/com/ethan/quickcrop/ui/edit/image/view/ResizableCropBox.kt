@@ -51,6 +51,7 @@ fun ResizableCropBox(
     // 记录画布尺寸
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     // 裁剪框尺寸、位置
+    // cropRect 保存当前裁剪框在 Canvas 坐标系中的位置和大小，这段 Rect 指的是 在当前绘制区域里的矩形坐标，也就是相对于 Canvas 左上角的坐标。
     var cropRect by remember { mutableStateOf(Rect.Zero) }
     // 拖拽模式
     var dragMode by remember { mutableStateOf(DragMode.None) }
@@ -77,9 +78,14 @@ fun ResizableCropBox(
         .onSizeChanged{
             canvasSize = it
         }
+        // 使用离屏图层进行合成。
+        // 原因：BlendMode.Clear 会清除当前绘制目标上的像素。如果直接作用在窗口画布上，
+        // 可能把窗口背景也清掉，导致裁剪区域显示异常（例如变黑）。
+        // Offscreen 会先把遮罩画到独立图层，再在这个图层里挖空裁剪区域，最后整体合成到界面上。
         .graphicsLayer {
             compositingStrategy = CompositingStrategy.Offscreen
         }
+        // 监听拖拽手势，让用户可以移动整个裁剪框。
         .pointerInput(canvasSize, cropBounds, aspectRatio, enabled) {
             if (!enabled) {
                 return@pointerInput
