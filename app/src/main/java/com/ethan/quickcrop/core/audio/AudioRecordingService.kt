@@ -45,34 +45,75 @@ import kotlin.math.abs
 import kotlin.math.log10
 import kotlin.math.sqrt
 
+/**
+ * 音频录制前台服务，负责麦克风采集、WAV 缓存写入、录音状态发布和通知栏控制。
+ */
 class AudioRecordingService : Service() {
+    /** 录音读写使用 IO 调度器，SupervisorJob 避免单个子任务异常取消整个服务作用域。 */
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** 提供给页面 bindService 后获取服务实例的本地 Binder。 */
     private val binder = LocalBinder()
+
+    /** 内部可变状态流，页面只通过只读 StateFlow 观察。 */
     private val mutableState = MutableStateFlow(AudioRecordingState())
+
+    /** 保护 AudioRecord、输出文件和 PCM 计数等共享资源的锁。 */
     private val stateLock = Any()
+
+    /** 完整录音波形的抽样历史，用于完成后绘制裁剪波形。 */
     private val waveformHistory = mutableListOf<Float>()
+
+    /** 用户录音过程中添加的标记点缓存。 */
     private val markers = mutableListOf<AudioRecordingMarker>()
 
+    /** 后台读取麦克风数据的协程任务。 */
     private var recordingJob: Job? = null
+
+    /** Android 麦克风采集对象。 */
     private var audioRecord: AudioRecord? = null
+
+    /** 当前录音缓存文件，停止后会保留给页面播放和裁剪。 */
     private var outputFile: File? = null
+
+    /** WAV 缓存文件随机访问句柄，用于先写占位头再回写真实长度。 */
     private var output: RandomAccessFile? = null
+
+    /** 已写入的 PCM 数据字节数，不包含 44 字节 WAV 文件头。 */
     private var pcmDataSize = 0L
+
+    /** Android 8+ 的音频焦点请求对象，用于结束录音时释放焦点。 */
     private var audioFocusRequest: AudioFocusRequest? = null
+
+    /** 上一次刷新通知的秒数，避免每个音频缓冲都刷新通知栏。 */
     private var lastNotificationSecond = -1L
+
+    /** 音频焦点变化监听，来电或其他应用抢占音频时自动暂停。 */
     private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener(::handleAudioFocusChange)
+
+    /** 主动暂停/停止时会打断阻塞读取，用它区分正常切换和真实读取异常。 */
     private val isReadInterrupted = AtomicBoolean(false)
 
+    /** 页面订阅的只读录音状态流。 */
     val state: StateFlow<AudioRecordingState> = mutableState.asStateFlow()
 
+    /**
+     * 服务创建时初始化通知渠道，后续启动前台服务会复用该渠道。
+     */
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         Log.d(TAG, "音频录制服务已创建")
     }
 
+    /**
+     * 页面绑定服务时返回本地 Binder，方便直接读取状态流。
+     */
     override fun onBind(intent: Intent?): IBinder = binder
 
+    /**
+     * 处理页面或通知栏发来的录音控制指令。
+     */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
@@ -89,6 +130,9 @@ class AudioRecordingService : Service() {
         return START_NOT_STICKY
     }
 
+    /**
+     * 服务销毁时释放录音器、文件句柄、音频焦点和协程作用域。
+     */
     override fun onDestroy() {
         synchronized(stateLock) {
             runCatching { audioRecord?.stop() }
@@ -103,8 +147,12 @@ class AudioRecordingService : Service() {
         super.onDestroy()
     }
 
+    /**
+     * 初始化录音环境，创建 WAV 缓存文件并启动麦克风读取协程。
+     */
     private fun startRecording() {
         synchronized(stateLock) {
+            // 防止重复点击开始创建多个 AudioRecord 或多个读取协程。
             if (mutableState.value.status == AudioRecordingStatus.Recording) {
                 Log.d(TAG, "录音已经开始，忽略重复启动")
                 return
@@ -123,6 +171,7 @@ class AudioRecordingService : Service() {
             }
 
             runCatching {
+                // 新录音会清理旧缓存，保证页面只处理一段当前录音。
                 clearPreviousRecording(deleteFile = true)
                 requestAudioFocus()
                 val minBufferSize = AudioRecord.getMinBufferSize(
@@ -131,6 +180,7 @@ class AudioRecordingService : Service() {
                     AudioFormat.ENCODING_PCM_16BIT
                 )
                 check(minBufferSize > 0) { "设备不支持当前录音参数: $minBufferSize" }
+                // 使用大于系统最小值的缓冲区，降低部分设备上读取抖动导致的 underrun 风险。
                 val safeBufferSize = maxOf(minBufferSize * 2, AUDIO_SAMPLE_RATE / 10)
                 val recorder = AudioRecord.Builder()
                     .setAudioSource(MediaRecorder.AudioSource.MIC)
@@ -153,6 +203,7 @@ class AudioRecordingService : Service() {
                 val recordingFile = File(recordingDirectory, "$displayName.wav")
                 val randomAccessFile = RandomAccessFile(recordingFile, "rw").apply {
                     setLength(0L)
+                    // 开始录音前先写空 WAV 头，停止时再回填真实 PCM 长度。
                     WavAudioProcessor.writeEmptyHeader(this)
                 }
 
@@ -182,6 +233,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 循环读取麦克风 PCM 数据，并把每个缓冲区交给写文件和波形计算逻辑。
+     */
     private suspend fun readAudioLoop(bufferSize: Int) {
         val shortBuffer = ShortArray(bufferSize.coerceAtLeast(1_024))
         var consecutiveReadErrors = 0
@@ -189,6 +243,7 @@ class AudioRecordingService : Service() {
             while (serviceScope.isActive) {
                 val currentStatus = mutableState.value.status
                 if (currentStatus == AudioRecordingStatus.Paused) {
+                    // 暂停时保留协程，轻量等待恢复，避免频繁创建读取任务。
                     delay(40L)
                     continue
                 }
@@ -200,6 +255,7 @@ class AudioRecordingService : Service() {
                 val readCount = recorder.read(shortBuffer, 0, shortBuffer.size, AudioRecord.READ_BLOCKING)
                 when {
                     readCount > 0 -> {
+                        // 成功读取后重置连续错误计数，避免偶发错误影响后续录音。
                         consecutiveReadErrors = 0
                         processAudioBuffer(shortBuffer, readCount)
                     }
@@ -238,6 +294,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 处理单次读取到的 PCM 样本：写入 WAV 数据区、计算音量峰值和更新状态流。
+     */
     private fun processAudioBuffer(buffer: ShortArray, readCount: Int) {
         if (mutableState.value.status != AudioRecordingStatus.Recording || isReadInterrupted.get()) {
             return
@@ -248,6 +307,7 @@ class AudioRecordingService : Service() {
         var maxAmplitude = 0
         repeat(readCount) { index ->
             val sample = buffer[index].toInt()
+            // WAV PCM 16-bit 使用小端序，低字节在前，高字节在后。
             byteBuffer[index * 2] = (sample and 0xFF).toByte()
             byteBuffer[index * 2 + 1] = (sample shr 8 and 0xFF).toByte()
             val absoluteSample = abs(sample)
@@ -259,6 +319,7 @@ class AudioRecordingService : Service() {
             pcmDataSize += byteBuffer.size
         }
 
+        // RMS 更适合表示听感音量，峰值分贝则用于判断是否接近削波。
         val rms = sqrt(sumSquares / readCount.coerceAtLeast(1))
         val normalizedAmplitude = (rms / Short.MAX_VALUE).toFloat().coerceIn(0F, 1F)
         val peakNormalized = (maxAmplitude.toFloat() / Short.MAX_VALUE).coerceIn(0F, 1F)
@@ -269,6 +330,7 @@ class AudioRecordingService : Service() {
         }
         appendWaveformSample(normalizedAmplitude)
 
+        // 通过已写入字节数反推录音时长，避免依赖系统时间导致暂停时长被计入。
         val elapsedMs = pcmDataSize * 1_000L / AUDIO_BYTES_PER_SECOND
         mutableState.value = mutableState.value.copy(
             status = AudioRecordingStatus.Recording,
@@ -288,6 +350,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 暂停录音读取，保留当前文件和状态，等待后续继续录音。
+     */
     private fun pauseRecording() {
         synchronized(stateLock) {
             if (mutableState.value.status != AudioRecordingStatus.Recording) {
@@ -307,6 +372,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 从暂停状态恢复录音，重新启动 AudioRecord 并继续写入同一个 WAV 文件。
+     */
     private fun resumeRecording() {
         synchronized(stateLock) {
             if (mutableState.value.status != AudioRecordingStatus.Paused) {
@@ -327,6 +395,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 停止录音并完成 WAV 文件头回写，使缓存文件成为可播放的 WAV 文件。
+     */
     private fun stopRecording(completionMessage: String? = null) {
         synchronized(stateLock) {
             val status = mutableState.value.status
@@ -343,6 +414,7 @@ class AudioRecordingService : Service() {
             recordingJob = null
             runCatching {
                 output?.let { currentOutput ->
+                    // 停止时才知道完整 PCM 长度，需要回到文件头写入 RIFF/data 大小。
                     WavAudioProcessor.finalizeHeader(currentOutput, pcmDataSize)
                     currentOutput.close()
                 }
@@ -368,6 +440,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 在当前录音位置添加一个标记点，供完成后快速跳转预览。
+     */
     private fun addMarker() {
         synchronized(stateLock) {
             if (mutableState.value.status != AudioRecordingStatus.Recording) {
@@ -383,6 +458,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 丢弃当前录音，释放资源并删除缓存文件，通常用于返回或重新录音。
+     */
     private fun discardRecording() {
         synchronized(stateLock) {
             isReadInterrupted.set(true)
@@ -402,6 +480,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 录音发生不可恢复错误时清理资源，删除异常文件并发布 Error 状态。
+     */
     private fun failRecording(message: String) {
         synchronized(stateLock) {
             isReadInterrupted.set(true)
@@ -424,6 +505,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 清理上一次录音的运行时状态，可选择同时删除缓存文件。
+     */
     private fun clearPreviousRecording(deleteFile: Boolean) {
         if (deleteFile) {
             outputFile?.let { file ->
@@ -440,10 +524,14 @@ class AudioRecordingService : Service() {
         lastNotificationSecond = -1L
     }
 
+    /**
+     * 把当前读取缓冲区切成固定数量片段，生成实时波形柱高度。
+     */
     private fun buildLiveWaveform(buffer: ShortArray, readCount: Int): List<Float> {
         if (readCount <= 0) {
             return List(LIVE_WAVEFORM_BAR_COUNT) { 0.08F }
         }
+        // 每根柱取对应片段的最大采样值，让瞬时峰值在实时波形中更明显。
         val segmentSize = (readCount / LIVE_WAVEFORM_BAR_COUNT).coerceAtLeast(1)
         return List(LIVE_WAVEFORM_BAR_COUNT) { barIndex ->
             val start = barIndex * segmentSize
@@ -461,9 +549,13 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 追加完成态波形抽样，并在点数过多时压缩历史数据，控制内存和 UI 绘制成本。
+     */
     private fun appendWaveformSample(amplitude: Float) {
         waveformHistory += amplitude.coerceIn(0.04F, 1F)
         if (waveformHistory.size > MAX_RECORDED_WAVEFORM_POINTS * 2) {
+            // 两两取峰值压缩可以保留明显峰值，同时把历史长度降回可控范围。
             val compressed = waveformHistory
                 .chunked(2)
                 .map { pair -> pair.maxOrNull() ?: 0.04F }
@@ -472,6 +564,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 检查缓存目录剩余空间，失败时选择继续尝试录音而不是提前阻断。
+     */
     private fun hasEnoughStorage(): Boolean {
         return runCatching {
             val statFs = StatFs(cacheDir.absolutePath)
@@ -481,6 +576,9 @@ class AudioRecordingService : Service() {
         }.getOrDefault(true)
     }
 
+    /**
+     * 请求独占短暂音频焦点，减少录音过程中其他媒体声音混入。
+     */
     private fun requestAudioFocus() {
         val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -505,6 +603,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 释放录音期间占用的音频焦点。
+     */
     private fun abandonAudioFocus() {
         val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -516,6 +617,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 处理音频焦点变化，失去焦点时主动暂停录音。
+     */
     private fun handleAudioFocusChange(focusChange: Int) {
         if (
             focusChange == AudioManager.AUDIOFOCUS_LOSS ||
@@ -526,6 +630,9 @@ class AudioRecordingService : Service() {
         }
     }
 
+    /**
+     * 创建前台服务通知渠道，Android 8 以下无需创建。
+     */
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return
@@ -543,6 +650,9 @@ class AudioRecordingService : Service() {
         )
     }
 
+    /**
+     * 按秒刷新前台通知，展示当前录音时长和暂停/继续操作。
+     */
     private fun updateNotification(force: Boolean) {
         val elapsedSecond = mutableState.value.elapsedMs / 1_000L
         if (!force && elapsedSecond == lastNotificationSecond) {
@@ -557,6 +667,9 @@ class AudioRecordingService : Service() {
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
     }
 
+    /**
+     * 构建录音前台通知，包含打开页面、暂停/继续和停止录音操作。
+     */
     private fun buildNotification(content: String, isPaused: Boolean): Notification {
         val openActivityIntent = PendingIntent.getActivity(
             this,
@@ -591,27 +704,65 @@ class AudioRecordingService : Service() {
             .build()
     }
 
+    /**
+     * 本地绑定器，允许同进程页面拿到服务实例并订阅状态流。
+     */
     inner class LocalBinder : Binder() {
+        /** 返回当前录音服务实例。 */
         fun getService(): AudioRecordingService = this@AudioRecordingService
     }
 
+    /**
+     * 服务控制入口和通知相关常量，供页面与通知栏通过 Intent 操作录音服务。
+     */
     companion object {
         private const val TAG = "AudioRecordingService"
+
+        /** 前台录音通知渠道 ID。 */
         private const val NOTIFICATION_CHANNEL_ID = "quickcrop_audio_recording"
+
+        /** 前台录音通知固定 ID，便于持续更新同一条通知。 */
         private const val NOTIFICATION_ID = 2_601
+
+        /** 点击通知打开录音页面的 PendingIntent 请求码。 */
         private const val REQUEST_OPEN_ACTIVITY = 1
+
+        /** 通知栏暂停/继续操作的 PendingIntent 请求码。 */
         private const val REQUEST_PAUSE_RESUME = 2
+
+        /** 通知栏停止操作的 PendingIntent 请求码。 */
         private const val REQUEST_STOP = 3
+
+        /** 开始录音前要求的最低可用缓存空间。 */
         private const val MIN_AVAILABLE_STORAGE_BYTES = 10L * 1024L * 1024L
+
+        /** 完成态波形历史的目标点数上限。 */
         private const val MAX_RECORDED_WAVEFORM_POINTS = 240
+
+        /** 连续读取失败超过该次数才认为录音异常。 */
         private const val MAX_CONSECUTIVE_READ_ERRORS = 3
+
+        /** 启动录音动作。 */
         private const val ACTION_START = "com.ethan.quickcrop.audio.START"
+
+        /** 暂停录音动作。 */
         private const val ACTION_PAUSE = "com.ethan.quickcrop.audio.PAUSE"
+
+        /** 继续录音动作。 */
         private const val ACTION_RESUME = "com.ethan.quickcrop.audio.RESUME"
+
+        /** 停止录音动作。 */
         private const val ACTION_STOP = "com.ethan.quickcrop.audio.STOP"
+
+        /** 添加录音标记动作。 */
         private const val ACTION_ADD_MARKER = "com.ethan.quickcrop.audio.ADD_MARKER"
+
+        /** 丢弃当前录音动作。 */
         private const val ACTION_DISCARD = "com.ethan.quickcrop.audio.DISCARD"
 
+        /**
+         * 启动前台录音服务并请求开始录音。
+         */
         fun start(context: Context) {
             ContextCompat.startForegroundService(
                 context,
@@ -619,26 +770,44 @@ class AudioRecordingService : Service() {
             )
         }
 
+        /**
+         * 请求暂停当前录音。
+         */
         fun pause(context: Context) {
             context.startService(Intent(context, AudioRecordingService::class.java).setAction(ACTION_PAUSE))
         }
 
+        /**
+         * 请求从暂停状态继续录音。
+         */
         fun resume(context: Context) {
             context.startService(Intent(context, AudioRecordingService::class.java).setAction(ACTION_RESUME))
         }
 
+        /**
+         * 请求停止录音并完成 WAV 文件保存。
+         */
         fun stop(context: Context) {
             context.startService(Intent(context, AudioRecordingService::class.java).setAction(ACTION_STOP))
         }
 
+        /**
+         * 请求在当前录音时间点添加标记。
+         */
         fun addMarker(context: Context) {
             context.startService(Intent(context, AudioRecordingService::class.java).setAction(ACTION_ADD_MARKER))
         }
 
+        /**
+         * 请求丢弃当前录音并清理服务资源。
+         */
         fun discard(context: Context) {
             context.startService(Intent(context, AudioRecordingService::class.java).setAction(ACTION_DISCARD))
         }
 
+        /**
+         * 将通知栏时长格式化为 HH:mm:ss。
+         */
         private fun formatNotificationDuration(durationMs: Long): String {
             val totalSeconds = durationMs / 1_000L
             val hours = totalSeconds / 3_600L

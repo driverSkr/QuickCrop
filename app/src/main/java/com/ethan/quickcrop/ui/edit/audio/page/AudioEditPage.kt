@@ -25,7 +25,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -40,7 +39,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -89,7 +87,6 @@ import com.ethan.quickcrop.core.audio.AudioRecordingMarker
 import com.ethan.quickcrop.core.audio.AudioRecordingService
 import com.ethan.quickcrop.core.audio.AudioRecordingState
 import com.ethan.quickcrop.core.audio.AudioRecordingStatus
-import com.ethan.quickcrop.core.audio.MIN_AUDIO_DB
 import com.ethan.quickcrop.core.audio.WavAudioProcessor
 import com.ethan.quickcrop.extension.finishActivity
 import kotlinx.coroutines.Dispatchers
@@ -108,9 +105,7 @@ private const val MIN_TRIM_DURATION_MS = 500L
  * 音频编辑页入口，负责连接录音服务、处理权限申请、页面退出确认和最终导出。
  */
 @Composable
-fun AudioEditPage(
-    onExportCompleted: (Uri) -> Unit
-) {
+fun AudioEditPage(onExportCompleted: (Uri) -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val audioService = rememberAudioRecordingService()
