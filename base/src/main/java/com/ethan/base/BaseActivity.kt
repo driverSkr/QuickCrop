@@ -109,6 +109,9 @@ abstract class BaseActivity : AppCompatActivity {
      * navigateTo<DetailActivity> {
      *     putExtra("id", id)
      * }
+     * 使用了内联函数 inline 避免了函数调用的开销，同时保持了函数式编程的简洁。
+     * 使用了 reified 修饰符，避免了反射开销。
+     * 泛型实化，将 T 泛型参数转为 Class 对象。
      */
     protected inline fun <reified T : Activity> navigateTo(
         flags: Int = 0,
